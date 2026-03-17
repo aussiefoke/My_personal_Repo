@@ -1,0 +1,17 @@
+{
+  "name": "chargesmart",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @chargesmart/api dev",
+    "dev:scraper": "pnpm --filter @chargesmart/scraper dev",
+    "db:generate": "pnpm --filter @chargesmart/db generate",
+    "db:migrate": "pnpm --filter @chargesmart/db migrate",
+    "db:studio": "pnpm --filter @chargesmart/db studio",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

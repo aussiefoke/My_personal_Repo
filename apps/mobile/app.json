@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "ChargeSmart",
+    "slug": "chargesmart",
+    "version": "1.0.0",
+    "scheme": "chargesmart",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "ChargeSmart 需要获取你的位置，以便找到附近的充电站。"
+        }
+      ],
+      "expo-font"
+    ],
+    "android": {
+      "package": "com.chargesmart.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1DB954"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.chargesmart.app"
+    },
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000",
+      "amapApiKey": ""
+    }
+  }
+}
