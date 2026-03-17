@@ -5,7 +5,9 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ 
+  connectionString: 'postgresql://postgres:IlVLaOvclXSLHmmXyXcprckoFihIRMcm@switchyard.proxy.rlwy.net:34734/railway'
+});
 const db = drizzle(pool, { schema });
 
 async function seed() {
