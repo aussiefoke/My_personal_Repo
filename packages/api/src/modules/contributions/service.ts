@@ -15,7 +15,7 @@ const EXPIRY_HOURS: Record<string, number | null> = {
   queue:        2,
   fault:        48,
   price_update: 48,
-  access_tip:   null, // 永久有效直到被纠正
+  access_tip:   null,
 };
 
 export interface ContributionInput {
@@ -30,7 +30,6 @@ export async function submitContribution(
   userId: string,
   body: ContributionInput
 ) {
-  // 1. 距离验证：必须在充电站 300m 以内
   const [station] = await db
     .select()
     .from(schema.stations)
@@ -43,7 +42,6 @@ export async function submitContribution(
     throw new AppError(403, `你距该充电站 ${dist.toFixed(1)}km，需在 300m 以内才能提交报告`);
   }
 
-  // 2. 频率限制：每人每站每天最多 3 条
   const [countRow] = await db.execute<{ count: string }>(sql`
     SELECT COUNT(*) as count FROM contributions
     WHERE user_id = ${userId}
@@ -54,7 +52,6 @@ export async function submitContribution(
     throw new AppError(429, '今日对该充电站的贡献已达上限（3条/天）');
   }
 
-  // 3. 获取用户信任分
   const [user] = await db
     .select()
     .from(schema.users)
@@ -62,11 +59,8 @@ export async function submitContribution(
   if (!user) throw new AppError(404, '用户不存在');
 
   const expiryH = EXPIRY_HOURS[body.type];
-  const expiresAt = expiryH
-    ? new Date(Date.now() + expiryH * 3600_000)
-    : null;
+  const expiresAt = expiryH ? new Date(Date.now() + expiryH * 3600_000) : null;
 
-  // 4. 写入贡献
   const [contrib] = await db
     .insert(schema.contributions)
     .values({
@@ -79,7 +73,6 @@ export async function submitContribution(
     })
     .returning();
 
-  // 5. 积分奖励
   const points = POINT_AWARDS[body.type] ?? 0;
   if (points > 0) {
     await db.insert(schema.pointTransactions).values({
@@ -93,12 +86,17 @@ export async function submitContribution(
     `);
   }
 
-  // 6. 价格更新：尝试自动核验（2条以上匹配则标记 verified=1）
   if (body.type === 'price_update') {
     await tryAutoVerifyPrice(body.stationId, contrib.id, body.payload);
   }
 
-  return { contribution: contrib, pointsEarned: points };
+  return {
+    contribution: contrib,
+    pointsEarned: points,
+    message: body.type === 'price_update'
+      ? '价格已提交，2人以上确认后自动生效'
+      : '贡献已提交，感谢你的帮助！'
+  };
 }
 
 async function tryAutoVerifyPrice(
@@ -113,23 +111,27 @@ async function tryAutoVerifyPrice(
       and(
         eq(schema.contributions.stationId, stationId),
         eq(schema.contributions.type, 'price_update'),
-        sql`${schema.contributions.created_at} > NOW() - INTERVAL '24 hours'`,
-        sql`${schema.contributions.id} != ${contribId}`
+        sql`${schema.contributions.createdAt} > NOW() - INTERVAL '24 hours'`,
+        sql`${schema.contributions.id} != ${contribId}`,
+        sql`${schema.contributions.verified} >= 0`
       )
     )
-    .limit(5);
+    .limit(10);
 
   const matching = recent.filter((r) => {
     try {
       const p = JSON.parse(r.payload) as Record<string, unknown>;
-      return Math.abs((p.totalFlat as number) - (payload.totalFlat as number)) < 0.05;
+      const diff = Math.abs((p.totalFlat as number) - (payload.totalFlat as number));
+      return diff < 0.05;
     } catch {
       return false;
     }
   });
 
-  if (matching.length >= 1) {
-    // 自动写入一条新的已验证价格快照
+  const uniqueUsers = new Set(matching.map(r => r.userId));
+  uniqueUsers.add('current');
+
+  if (uniqueUsers.size >= 2) {
     await db.insert(schema.priceSnapshots).values({
       stationId,
       elecFeePeak:   payload.elecFeePeak as number,
@@ -144,5 +146,21 @@ async function tryAutoVerifyPrice(
       verifiedAt:    new Date(),
       expiresAt:     new Date(Date.now() + 48 * 3600_000),
     });
+
+    for (const r of matching) {
+      await db.insert(schema.pointTransactions).values({
+        userId:     r.userId,
+        amount:     5,
+        actionType: 'price_verified',
+        referenceId: r.id,
+      });
+      await db.execute(
+        sql`UPDATE users SET points = points + 5 WHERE id = ${r.userId}`
+      );
+    }
+
+    console.log(`价格已通过 ${uniqueUsers.size} 人交叉验证，已更新充电站 ${stationId} 的价格`);
+  } else {
+    console.log(`价格待验证：已有 ${uniqueUsers.size}/2 人确认，等待更多用户核实`);
   }
 }

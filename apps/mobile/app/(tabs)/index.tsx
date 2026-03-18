@@ -102,8 +102,7 @@ export default function MapScreen() {
 <body>
   <div id="map"></div>
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1IjoibHh5dHd3NTIwIiwiYSI6ImNtbXc0dnVubDJvOWkyb3BzcDVyZXQwaHAifQ.BriWL088vkKRNgwTLZ9Oxg';
-    var map = new mapboxgl.Map({
+mapboxgl.accessToken = 'pk.eyJ1IjoibHh5dHd3NTIwIiwiYSI6ImNtbXc0dnVubDJvOWkyb3BzcDVyZXQwaHAifQ.BriWL088vkKRNgwTLZ9Oxg';
       container: 'map',
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [114.0577, 22.5396],
