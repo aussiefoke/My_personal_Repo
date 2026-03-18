@@ -78,6 +78,8 @@ export default function MapScreen() {
     ]);
   };
 
+  const mapToken = 'pk.eyJ1IjoibHh5dHd3NTIwIiwiYSI6ImNtbXc0dnVubDJvOWkyb3BzcDVyZXQwaHAifQ.BriWL088vkKRNgwTLZ9Oxg';
+
   const mapHtml = `
 <!DOCTYPE html>
 <html>
@@ -102,7 +104,8 @@ export default function MapScreen() {
 <body>
   <div id="map"></div>
   <script>
-mapboxgl.accessToken = 'pk.eyJ1IjoibHh5dHd3NTIwIiwiYSI6ImNtbXc0dnVubDJvOWkyb3BzcDVyZXQwaHAifQ.BriWL088vkKRNgwTLZ9Oxg';
+    mapboxgl.accessToken = '${mapToken}';
+    var map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [114.0577, 22.5396],
@@ -156,13 +159,15 @@ mapboxgl.accessToken = 'pk.eyJ1IjoibHh5dHd3NTIwIiwiYSI6ImNtbXc0dnVubDJvOWkyb3Bzc
           <WebView
             style={styles.map}
             source={{ html: mapHtml }}
+            originWhitelist={['*']}
+            mixedContentMode="always"
+            javaScriptEnabled
+            domStorageEnabled
             onMessage={(e) => {
               const data = JSON.parse(e.nativeEvent.data);
               const station = stations.find(s => s.id === data.id);
               if (station) setSelected(station);
             }}
-            javaScriptEnabled
-            domStorageEnabled
           />
 
           {selected && (
@@ -170,13 +175,10 @@ mapboxgl.accessToken = 'pk.eyJ1IjoibHh5dHd3NTIwIiwiYSI6ImNtbXc0dnVubDJvOWkyb3Bzc
               <TouchableOpacity style={styles.closeBtn} onPress={() => setSelected(null)}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </TouchableOpacity>
-
-              {/* 点击站名跳转详情页 */}
               <TouchableOpacity onPress={() => router.push(`/station/${selected.id}`)}>
                 <Text style={styles.cardName}>{selected.name}</Text>
                 <Text style={styles.viewDetail}>查看详情 ›</Text>
               </TouchableOpacity>
-
               <Text style={styles.cardAddress}>{selected.address}</Text>
               <View style={styles.cardRow}>
                 <View style={styles.cardStat}>

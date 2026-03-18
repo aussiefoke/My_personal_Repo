@@ -145,12 +145,12 @@ export default function ProfileScreen() {
         ) : transactions.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>暂无记录，去贡献数据赚积分吧！</Text>
-            <TouchableOpacity
-              style={styles.contributeBtn}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <Text style={styles.contributeBtnText}>去贡献数据</Text>
-            </TouchableOpacity>
+        <TouchableOpacity
+  style={styles.contributeBtn}
+  onPress={() => router.push('/')}
+>
+  <Text style={styles.contributeBtnText}>去地图找充电站</Text>
+</TouchableOpacity>
           </View>
         ) : (
           transactions.slice(0, 10).map((t, i) => (
