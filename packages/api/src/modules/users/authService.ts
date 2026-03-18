@@ -5,7 +5,8 @@ import { db, schema } from '../../shared/db/client';
 const otpStore = new Map<string, { code: string; expiresAt: number }>();
 
 export function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // 开发阶段固定验证码，上线前删除
+  return '123456';
 }
 
 export async function sendOtp(phone: string): Promise<string> {

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // 开发时改为你的局域网 IP，例如 http://192.168.1.100:3000
-const BASE_URL = 'http://172.20.10.2:3000';
+const BASE_URL = 'https://mypersonalrepo-production.up.railway.app';
 
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
