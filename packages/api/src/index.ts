@@ -4,13 +4,13 @@ import fjwt from '@fastify/jwt';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 
-import { stationsRoutes }     from './modules/stations/routes';
-import { rankingRoutes }      from './modules/ranking/routes';
-import { authRoutes }         from './modules/users/routes';
+import { stationsRoutes }      from './modules/stations/routes';
+import { rankingRoutes }       from './modules/ranking/routes';
+import { authRoutes, userRoutes } from './modules/users/routes';
 import { contributionsRoutes } from './modules/contributions/routes';
-import { reviewsRoutes }      from './modules/reviews/routes';
-import { calculatorRoutes }   from './modules/calculator/routes';
-import { adminRoutes }        from './modules/admin/routes';
+import { reviewsRoutes }       from './modules/reviews/routes';
+import { calculatorRoutes }    from './modules/calculator/routes';
+import { adminRoutes }         from './modules/admin/routes';
 
 const app = Fastify({
   logger: {
@@ -21,7 +21,6 @@ const app = Fastify({
 });
 
 async function bootstrap() {
-  // 插件
   await app.register(cors, { origin: true });
   await app.register(fjwt, {
     secret: process.env.JWT_SECRET ?? 'dev-secret-please-change',
@@ -31,11 +30,10 @@ async function bootstrap() {
     timeWindow: '1 minute',
   });
 
-  // 健康检查
   app.get('/health', async () => ({ status: 'ok', time: new Date().toISOString() }));
 
-  // 路由注册
   await app.register(authRoutes,          { prefix: '/api/v1/auth' });
+  await app.register(userRoutes,          { prefix: '/api/v1/users' });
   await app.register(stationsRoutes,      { prefix: '/api/v1/stations' });
   await app.register(rankingRoutes,       { prefix: '/api/v1/ranking' });
   await app.register(contributionsRoutes, { prefix: '/api/v1/contributions' });
@@ -43,7 +41,6 @@ async function bootstrap() {
   await app.register(calculatorRoutes,    { prefix: '/api/v1/calculator' });
   await app.register(adminRoutes,         { prefix: '/api/v1/admin' });
 
-  // 全局错误处理
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
     reply.code(500).send({ error: '服务器内部错误', message: error.message });

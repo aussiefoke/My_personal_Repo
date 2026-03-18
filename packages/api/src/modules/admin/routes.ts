@@ -1,74 +1,85 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
-import { requireAdmin, requireAuth } from '../../shared/middleware/auth';
+import { requireAdmin } from '../../shared/middleware/auth';
 import { db, schema } from '../../shared/db/client';
 
-export async function authRoutes(app: FastifyInstance) {
-  // POST /api/v1/auth/send-otp
-  app.post('/send-otp', async (request, reply) => {
-    const body = z.object({ phone: z.string().regex(/^1[3-9]\d{9}$/) })
-      .safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: '手机号格式错误' });
+export async function adminRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', requireAdmin);
 
-    await sendOtp(body.data.phone);
-    return { message: '验证码已发送' };
-  });
-
-  // POST /api/v1/auth/verify-otp
-  app.post('/verify-otp', async (request, reply) => {
-    const body = z.object({
-      phone: z.string(),
-      code: z.string().length(6),
-    }).safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: '参数错误' });
-
-    const result = await verifyOtp(body.data.phone, body.data.code);
-    if (!result) return reply.code(401).send({ error: '验证码错误或已过期' });
-
-    const token = app.jwt.sign(
-      { userId: result.user.id, role: 'user' },
-      { expiresIn: '30d' }
+  app.get('/dashboard', async () => {
+    const [userCount] = await db.execute<{ count: string }>(
+      sql`SELECT COUNT(*) as count FROM users`
     );
-
-    return { token, user: result.user };
+    const [stationCount] = await db.execute<{ count: string }>(
+      sql`SELECT COUNT(*) as count FROM stations`
+    );
+    const [pendingCount] = await db.execute<{ count: string }>(
+      sql`SELECT COUNT(*) as count FROM contributions WHERE verified = 0`
+    );
+    const [reviewCount] = await db.execute<{ count: string }>(
+      sql`SELECT COUNT(*) as count FROM reviews`
+    );
+    return {
+      users:           parseInt(userCount.count),
+      stations:        parseInt(stationCount.count),
+      pendingContribs: parseInt(pendingCount.count),
+      reviews:         parseInt(reviewCount.count),
+    };
   });
 
-  // GET /api/v1/users/me
-  app.get('/me', { preHandler: requireAuth }, async (request, reply) => {
-    const user = request.user as { userId: string };
-    const [profile] = await db
-      .select()
-      .from(schema.users)
-      .where(eq(schema.users.id, user.userId));
-
-    if (!profile) return reply.code(404).send({ error: '用户不存在' });
-    return { user: profile };
+  app.post('/stations', async (request, reply) => {
+    const parsed = z.object({
+      name:           z.string().min(2),
+      operatorId:     z.string(),
+      address:        z.string(),
+      city:           z.string(),
+      lat:            z.number(),
+      lng:            z.number(),
+      chargerCountDc: z.number().int().default(0),
+      chargerCountAc: z.number().int().default(0),
+      parkingNote:    z.string().optional(),
+      accessNote:     z.string().optional(),
+    }).safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: '参数错误', details: parsed.error.flatten() });
+    }
+    const [station] = await db.insert(schema.stations).values(parsed.data).returning();
+    return reply.code(201).send({ station });
   });
 
-  // GET /api/v1/users/me/transactions
-  app.get('/me/transactions', { preHandler: requireAuth }, async (request) => {
-    const user = request.user as { userId: string };
-    const transactions = await db
-      .select()
-      .from(schema.pointTransactions)
-      .where(eq(schema.pointTransactions.userId, user.userId))
-      .orderBy(sql`${schema.pointTransactions.createdAt} DESC`)
-      .limit(20);
-
-    return { transactions };
+  app.patch<{ Params: { id: string } }>('/stations/:id', async (request, reply) => {
+    const [updated] = await db
+      .update(schema.stations)
+      .set({ ...(request.body as object), updatedAt: new Date() })
+      .where(eq(schema.stations.id, request.params.id))
+      .returning();
+    if (!updated) return reply.code(404).send({ error: '充电站不存在' });
+    return { station: updated };
   });
 
-  // GET /api/v1/users/me/contributions
-  app.get('/me/contributions', { preHandler: requireAuth }, async (request) => {
-    const user = request.user as { userId: string };
-    const contributions = await db
+  app.get('/contributions/queue', async () => {
+    const rows = await db
       .select()
       .from(schema.contributions)
-      .where(eq(schema.contributions.userId, user.userId))
+      .where(eq(schema.contributions.verified, 0))
       .orderBy(sql`${schema.contributions.createdAt} DESC`)
-      .limit(20);
+      .limit(50);
+    return { queue: rows };
+  });
 
-    return { contributions };
+  app.patch<{ Params: { id: string } }>('/contributions/:id', async (request, reply) => {
+    const parsed = z.object({
+      verified: z.union([z.literal(1), z.literal(-1)]),
+    }).safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: '参数错误' });
+    }
+    const [updated] = await db
+      .update(schema.contributions)
+      .set({ verified: parsed.data.verified })
+      .where(eq(schema.contributions.id, request.params.id))
+      .returning();
+    return { contribution: updated };
   });
 }
