@@ -25,7 +25,13 @@
       }
     },
     "ios": {
-      "bundleIdentifier": "com.chargesmart.app"
+      "bundleIdentifier": "com.chargesmart.app",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "iosamap",
+          "baidumap"
+        ]
+      }
     },
     "extra": {
       "apiBaseUrl": "http://localhost:3000",

@@ -60,14 +60,13 @@ export async function getStationWithDetails(id: string) {
     .orderBy(sql`${schema.reviews.createdAt} DESC`)
     .limit(10);
 
-  // 最近的有效贡献（排队、故障）
+    
   const recentReports = await db
     .select()
     .from(schema.contributions)
     .where(
       and(
         eq(schema.contributions.stationId, id),
-        sql`${schema.contributions.expires_at} > NOW()`,
         sql`${schema.contributions.verified} >= 0`
       )
     )
