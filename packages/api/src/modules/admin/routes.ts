@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
-import { requireAdmin } from '../../shared/middleware/auth';
+import { requireAdmin, requireAuth } from '../../shared/middleware/auth';
 import { db, schema } from '../../shared/db/client';
 
 export async function authRoutes(app: FastifyInstance) {

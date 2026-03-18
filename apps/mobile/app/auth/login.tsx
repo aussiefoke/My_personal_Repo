@@ -5,7 +5,7 @@ import {
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { authApi } from '../../lib/api';
-import { useAuthStore } from '../../../store/authStore';
+import { useAuthStore } from '../../store/authStore';
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState('');

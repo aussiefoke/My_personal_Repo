@@ -5,7 +5,7 @@ const BASE_URL = 'https://mypersonalrepo-production.up.railway.app';
 
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
-  timeout: 10000,
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
 
