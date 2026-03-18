@@ -1,9 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
-import { requireAuth } from '../../shared/middleware/auth';
+import { requireAdmin } from '../../shared/middleware/auth';
 import { db, schema } from '../../shared/db/client';
-import { sendOtp, verifyOtp } from './authService';
 
 export async function authRoutes(app: FastifyInstance) {
   // POST /api/v1/auth/send-otp
