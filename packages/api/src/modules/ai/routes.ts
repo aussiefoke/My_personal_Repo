@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { db } from '../../shared/db/client';
+import { db, schema } from '../../shared/db/client';
 import { sql } from 'drizzle-orm';
+import { requireAuth } from '../../shared/middleware/auth';
 
 const FEATHERLESS_KEY = 'rc_99f363be1cd77ac59bc3ddd66211aecaedff98500d57833149275cbede77bfd6';
 
@@ -15,12 +16,9 @@ export async function aiRoutes(app: FastifyInstance) {
       lng: z.number().optional(),
     }).safeParse(request.body);
 
-    if (!parsed.success) {
-      return reply.code(400).send({ error: '参数错误' });
-    }
+    if (!parsed.success) return reply.code(400).send({ error: '参数错误' });
 
     const { message, lat = 22.5396, lng = 114.0577 } = parsed.data;
-
     const latDelta = 5 / 111;
     const lngDelta = 5 / (111 * Math.cos((lat * Math.PI) / 180));
 
@@ -46,7 +44,6 @@ export async function aiRoutes(app: FastifyInstance) {
     `);
 
     const stations = Array.isArray(result) ? result : (result as any).rows ?? [];
-
     const hour = new Date().getHours();
     const period = hour >= 8 && hour < 22 ? '平时' : '谷时';
 
@@ -92,7 +89,6 @@ ${stationContext}
       });
 
       if (!response.ok) throw new Error(`Featherless API error: ${response.status}`);
-
       const data = await response.json() as any;
       return { reply: data.choices[0].message.content };
     } catch (err) {
@@ -108,9 +104,7 @@ ${stationContext}
       mimeType: z.string().default('image/jpeg'),
     }).safeParse(request.body);
 
-    if (!parsed.success) {
-      return reply.code(400).send({ error: '参数错误' });
-    }
+    if (!parsed.success) return reply.code(400).send({ error: '参数错误' });
 
     const { imageBase64, mimeType } = parsed.data;
 
@@ -129,17 +123,18 @@ ${stationContext}
               content: [
                 {
                   type: 'image_url',
-                  image_url: {
-                    url: `data:${mimeType};base64,${imageBase64}`,
-                  },
+                  image_url: { url: `data:${mimeType};base64,${imageBase64}` },
                 },
                 {
                   type: 'text',
-                  text: `请识别这张充电账单截图，找出本次充电的度数（kWh）。
-只返回一个JSON对象，格式如下，不要返回其他任何内容：
-{"kwh": 数字, "found": true}
-如果找不到充电度数，返回：
-{"kwh": 0, "found": false}`,
+                  text: `请识别这张充电账单截图，找出：
+1. 本次充电的度数（kWh）
+2. 充电日期
+
+只返回JSON，不要返回其他内容：
+{"kwh": 数字, "date": "YYYY-MM-DD", "found": true}
+找不到返回：
+{"kwh": 0, "date": null, "found": false}`,
                 },
               ],
             },
@@ -153,14 +148,27 @@ ${stationContext}
 
       const data = await response.json() as any;
       const content = data.choices[0].message.content;
-
       const jsonMatch = content.match(/\{.*\}/s);
       if (!jsonMatch) throw new Error('无法解析 AI 返回结果');
 
       const result = JSON.parse(jsonMatch[0]);
-      const kwh = parseFloat(result.kwh) || 0;
+
+      // 验证账单日期不超过7天
+      if (result.date) {
+        const receiptDate = new Date(result.date);
+        const daysDiff = (Date.now() - receiptDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysDiff > 7) {
+          return {
+            kwh: 0,
+            found: false,
+            reason: `账单日期为 ${result.date}，超过7天的账单无法领取积分`,
+          };
+        }
+      }
+
+      const kwh = Math.min(parseFloat(result.kwh) || 0, 100); // 最多100度
       const co2Saved = kwh * 0.094;
-      const points = Math.floor(kwh * 2);
+      const points = Math.min(Math.floor(kwh * 2), 200); // 最多200积分
 
       return {
         kwh,
@@ -174,5 +182,45 @@ ${stationContext}
       console.error('Scan receipt error:', err);
       return reply.code(500).send({ error: '识别失败，请重试' });
     }
+  });
+
+  // POST /api/v1/ai/claim-carbon-points
+  app.post('/claim-carbon-points', { preHandler: requireAuth }, async (request, reply) => {
+    const parsed = z.object({
+      kwh: z.number().min(0.1).max(100),
+      stationId: z.string(),
+    }).safeParse(request.body);
+
+    if (!parsed.success) return reply.code(400).send({ error: '参数错误' });
+
+    const user = request.user as { userId: string };
+
+    // 每日限领一次
+    const todayResult = await db.execute<{ count: string }>(sql`
+      SELECT COUNT(*) as count FROM point_transactions
+      WHERE user_id = ${user.userId}
+        AND action_type = 'carbon_receipt'
+        AND created_at > NOW() - INTERVAL '24 hours'
+    `);
+const todayRows = Array.isArray(todayResult) ? todayResult : (todayResult as any).rows ?? [];
+const todayCount = parseInt(todayRows[0]?.count ?? '0');
+if (todayCount >= 1) {
+  return reply.code(429).send({ error: '今日已领取过碳积分，明天再来' });
+}
+
+    const points = Math.min(Math.floor(parsed.data.kwh * 2), 200);
+
+    await db.execute(sql`
+      UPDATE users SET points = points + ${points} WHERE id = ${user.userId}
+    `);
+
+    await db.insert(schema.pointTransactions).values({
+      userId:      user.userId,
+      amount:      points,
+      actionType:  'carbon_receipt',
+      referenceId: parsed.data.stationId,
+    });
+
+    return { pointsEarned: points, message: '积分已到账' };
   });
 }

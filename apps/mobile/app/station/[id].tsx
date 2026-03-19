@@ -6,6 +6,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../../lib/api';
+import { useAuthStore } from '../../store/authStore';
 
 interface StationDetail {
   id: string;
@@ -58,6 +59,7 @@ interface ScanResult {
   treesEquivalent: string;
   pointsEarned: number;
   found: boolean;
+  reason?: string;
 }
 
 const OPERATOR_NAMES: Record<string, string> = {
@@ -87,6 +89,8 @@ export default function StationDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const { isLoggedIn } = useAuthStore();
 
   useEffect(() => {
     loadStation();
@@ -112,6 +116,14 @@ export default function StationDetailScreen() {
   };
 
   const handleScan = async (useCamera: boolean) => {
+    if (!isLoggedIn()) {
+      Alert.alert('请先登录', '登录后才能上传账单赚积分', [
+        { text: '去登录', onPress: () => router.push('/auth/login') },
+        { text: '取消', style: 'cancel' },
+      ]);
+      return;
+    }
+
     try {
       if (useCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -151,6 +163,27 @@ export default function StationDetailScreen() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleClaim = async () => {
+    if (!scanResult || !station) return;
+    setClaiming(true);
+    try {
+      const res = await apiClient.post('/ai/claim-carbon-points', {
+        kwh: scanResult.kwh,
+        stationId: station.id,
+      });
+      Alert.alert(
+        '积分已到账',
+        `+${res.data.pointsEarned} 积分已添加到你的账户\n减少了 ${scanResult.co2Saved}kg CO₂ 排放`,
+        [{ text: '好的', onPress: () => setScanResult(null) }]
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.error ?? '领取失败，请稍后重试';
+      Alert.alert('领取失败', msg);
+    } finally {
+      setClaiming(false);
     }
   };
 
@@ -335,7 +368,7 @@ export default function StationDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>本次充电环保贡献攒积分</Text>
           <Text style={styles.scanDesc}>
-            上传充电账单截图，AI 自动识别充电度数，计算碳减排并获取积分
+            上传充电账单截图，AI 自动识别充电度数，计算碳减排并获取积分（每度电 2 积分，每日限领一次）
           </Text>
 
           {scanning ? (
@@ -380,13 +413,14 @@ export default function StationDetailScreen() {
                   可获得 +{scanResult.pointsEarned} 积分
                 </Text>
                 <TouchableOpacity
-                  style={styles.claimBtn}
-                  onPress={() => {
-                    Alert.alert('积分已到账', `+${scanResult.pointsEarned} 积分已添加到你的账户`);
-                    setScanResult(null);
-                  }}
+                  style={[styles.claimBtn, claiming && styles.claimBtnDisabled]}
+                  onPress={handleClaim}
+                  disabled={claiming}
                 >
-                  <Text style={styles.claimBtnText}>领取积分</Text>
+                  {claiming
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={styles.claimBtnText}>领取积分</Text>
+                  }
                 </TouchableOpacity>
               </View>
               <TouchableOpacity onPress={() => setScanResult(null)}>
@@ -396,7 +430,7 @@ export default function StationDetailScreen() {
           ) : (
             <View style={styles.scanResultBox}>
               <Text style={styles.scanNotFound}>
-                未能识别充电度数，请确保账单清晰可见
+                {scanResult.reason ?? '未能识别充电度数，请确保账单清晰可见'}
               </Text>
               <TouchableOpacity onPress={() => setScanResult(null)}>
                 <Text style={styles.rescanText}>重新扫描</Text>
@@ -405,7 +439,7 @@ export default function StationDetailScreen() {
           )}
 
           <Text style={styles.carbonDisclaimer}>
-            对比同等里程燃油车（8L/100km），电网排放系数 0.54kg/度，每度电 2 积分
+            对比同等里程燃油车（8L/100km），电网排放系数 0.54kg/度
           </Text>
         </View>
 
@@ -558,6 +592,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1DB954', borderRadius: 8,
     paddingHorizontal: 16, paddingVertical: 8,
   },
+  claimBtnDisabled: { opacity: 0.6 },
   claimBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   scanNotFound: { fontSize: 14, color: '#FF3B30', textAlign: 'center' },
   rescanText: { fontSize: 13, color: '#888', textAlign: 'center' },
