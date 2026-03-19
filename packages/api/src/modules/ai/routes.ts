@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { db, schema } from '../../shared/db/client';
+import { db } from '../../shared/db/client';
 import { sql } from 'drizzle-orm';
 
 const FEATHERLESS_KEY = 'rc_99f363be1cd77ac59bc3ddd66211aecaedff98500d57833149275cbede77bfd6';
@@ -19,11 +19,10 @@ export async function aiRoutes(app: FastifyInstance) {
 
     const { message, lat = 22.5396, lng = 114.0577 } = parsed.data;
 
-    // 获取附近充电站数据作为上下文
     const latDelta = 5 / 111;
     const lngDelta = 5 / (111 * Math.cos((lat * Math.PI) / 180));
 
-    const stations = await db.execute<any>(sql`
+    const result = await db.execute<any>(sql`
       SELECT s.name, s.address, s.operator_id,
              s.charger_count_dc, s.charger_count_ac,
              s.reliability_score, s.parking_note,
@@ -44,12 +43,12 @@ export async function aiRoutes(app: FastifyInstance) {
       LIMIT 8
     `);
 
-    // 获取当前时段
+    const stations = Array.isArray(result) ? result : (result as any).rows ?? [];
+
     const hour = new Date().getHours();
     const period = hour >= 8 && hour < 22 ? '平时' : '谷时';
 
-    // 构建充电站上下文
-    const stationContext = stations.map((s: any) => 
+    const stationContext = stations.map((s: any) =>
       `- ${s.name}（${s.address}）：距离约${s.distance_km}km，` +
       `平时¥${s.total_flat?.toFixed(2) ?? '未知'}/度，` +
       `谷时¥${s.total_valley?.toFixed(2) ?? '未知'}/度，` +
@@ -59,7 +58,7 @@ export async function aiRoutes(app: FastifyInstance) {
     ).join('\n');
 
     const systemPrompt = `你是 ChargeSmart 的 AI 充电助手，专门帮助中国 EV 用户找到最合适的充电站。
-    
+
 当前时段：${period}（${hour}点）
 用户附近的充电站数据：
 ${stationContext}
