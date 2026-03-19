@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../../lib/api';
 
 interface StationDetail {
@@ -50,6 +51,15 @@ interface StationDetail {
   }[];
 }
 
+interface ScanResult {
+  kwh: number;
+  co2Saved: string;
+  kmEquivalent: string;
+  treesEquivalent: string;
+  pointsEarned: number;
+  found: boolean;
+}
+
 const OPERATOR_NAMES: Record<string, string> = {
   teld:           '特来电',
   star_charge:    '星星充电',
@@ -75,6 +85,8 @@ export default function StationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [station, setStation] = useState<StationDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   useEffect(() => {
     loadStation();
@@ -99,11 +111,53 @@ export default function StationDetailScreen() {
     return 'valley';
   };
 
+  const handleScan = async (useCamera: boolean) => {
+    try {
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('需要相机权限', '请在设置中允许访问相机');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('需要相册权限', '请在设置中允许访问相册');
+          return;
+        }
+      }
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({ base64: true, quality: 0.7 })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            base64: true,
+            quality: 0.7,
+          });
+
+      if (!result.canceled && result.assets[0].base64) {
+        setScanning(true);
+        try {
+          const res = await apiClient.post('/ai/scan-receipt', {
+            imageBase64: result.assets[0].base64,
+            mimeType: result.assets[0].mimeType ?? 'image/jpeg',
+          });
+          setScanResult(res.data);
+        } catch (e) {
+          Alert.alert('识别失败', '请确保图片清晰，或稍后重试');
+        } finally {
+          setScanning(false);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const navigateTo = () => {
     if (!station) return;
     const { lat, lng, name } = station;
     const encodedName = encodeURIComponent(name);
-
     Alert.alert('选择导航方式', '', [
       {
         text: '高德地图',
@@ -145,7 +199,6 @@ export default function StationDetailScreen() {
   const currentPrice = period === 'valley'
     ? station.latestPrice?.totalValley
     : station.latestPrice?.totalFlat;
-
   const reliabilityPct = Math.round((station.reliabilityScore ?? 0.5) * 100);
 
   return (
@@ -235,7 +288,11 @@ export default function StationDetailScreen() {
                   <Text style={[styles.periodPrice, isNow && styles.periodPriceActive]}>
                     ¥{price?.toFixed(2)}/度
                   </Text>
-                  {isNow && <View style={styles.nowBadge}><Text style={styles.nowBadgeText}>当前</Text></View>}
+                  {isNow && (
+                    <View style={styles.nowBadge}>
+                      <Text style={styles.nowBadgeText}>当前</Text>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -274,6 +331,84 @@ export default function StationDetailScreen() {
           </View>
         )}
 
+        {/* 本次充电环保贡献攒积分 */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>本次充电环保贡献攒积分</Text>
+          <Text style={styles.scanDesc}>
+            上传充电账单截图，AI 自动识别充电度数，计算碳减排并获取积分
+          </Text>
+
+          {scanning ? (
+            <View style={styles.scanningBox}>
+              <ActivityIndicator size="large" color="#1DB954" />
+              <Text style={styles.scanningText}>AI 正在识别账单...</Text>
+            </View>
+          ) : !scanResult ? (
+            <View style={styles.scanBtnRow}>
+              <TouchableOpacity
+                style={styles.scanBtn}
+                onPress={() => handleScan(false)}
+              >
+                <Text style={styles.scanBtnText}>从相册选择</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.scanBtn, styles.scanBtnOutline]}
+                onPress={() => handleScan(true)}
+              >
+                <Text style={[styles.scanBtnText, { color: '#1DB954' }]}>拍照上传</Text>
+              </TouchableOpacity>
+            </View>
+          ) : scanResult.found ? (
+            <View style={styles.scanResultBox}>
+              <Text style={styles.scanKwh}>识别度数：{scanResult.kwh} 度</Text>
+              <View style={styles.carbonGrid}>
+                <View style={styles.carbonItem}>
+                  <Text style={styles.carbonItemValue}>{scanResult.co2Saved} kg</Text>
+                  <Text style={styles.carbonItemSub}>CO₂ 减排</Text>
+                </View>
+                <View style={styles.carbonItem}>
+                  <Text style={styles.carbonItemValue}>{scanResult.kmEquivalent} km</Text>
+                  <Text style={styles.carbonItemSub}>少开燃油车</Text>
+                </View>
+                <View style={styles.carbonItem}>
+                  <Text style={styles.carbonItemValue}>{scanResult.treesEquivalent} 棵</Text>
+                  <Text style={styles.carbonItemSub}>等效种树</Text>
+                </View>
+              </View>
+              <View style={styles.pointsEarnedRow}>
+                <Text style={styles.pointsEarnedText}>
+                  可获得 +{scanResult.pointsEarned} 积分
+                </Text>
+                <TouchableOpacity
+                  style={styles.claimBtn}
+                  onPress={() => {
+                    Alert.alert('积分已到账', `+${scanResult.pointsEarned} 积分已添加到你的账户`);
+                    setScanResult(null);
+                  }}
+                >
+                  <Text style={styles.claimBtnText}>领取积分</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={() => setScanResult(null)}>
+                <Text style={styles.rescanText}>重新扫描</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.scanResultBox}>
+              <Text style={styles.scanNotFound}>
+                未能识别充电度数，请确保账单清晰可见
+              </Text>
+              <TouchableOpacity onPress={() => setScanResult(null)}>
+                <Text style={styles.rescanText}>重新扫描</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Text style={styles.carbonDisclaimer}>
+            对比同等里程燃油车（8L/100km），电网排放系数 0.54kg/度，每度电 2 积分
+          </Text>
+        </View>
+
         {/* 停车说明 */}
         {(station.parkingNote || station.accessNote) && (
           <View style={styles.section}>
@@ -300,7 +435,9 @@ export default function StationDetailScreen() {
             station.reviews.map((r) => (
               <View key={r.id} style={styles.reviewRow}>
                 <View style={styles.reviewHeader}>
-                  <Text style={styles.reviewRating}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</Text>
+                  <Text style={styles.reviewRating}>
+                    {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                  </Text>
                   <Text style={styles.reviewDate}>
                     {new Date(r.createdAt).toLocaleDateString('zh-CN')}
                   </Text>
@@ -316,8 +453,14 @@ export default function StationDetailScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* 底部导航按钮 */}
+      {/* 底部按钮 */}
       <View style={styles.bottomBar}>
+        <TouchableOpacity
+          style={styles.contributeBtn}
+          onPress={() => router.push(`/contribute/${station.id}?stationName=${encodeURIComponent(station.name)}`)}
+        >
+          <Text style={styles.contributeBtnText}>贡献数据</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.navBtn} onPress={navigateTo}>
           <Text style={styles.navBtnText}>开始导航</Text>
         </TouchableOpacity>
@@ -332,11 +475,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { color: '#999', fontSize: 14 },
 
-  header: {
-    backgroundColor: '#fff',
-    padding: 16,
-    paddingTop: 56,
-  },
+  header: { backgroundColor: '#fff', padding: 16, paddingTop: 56 },
   backBtn: { marginBottom: 12 },
   backText: { fontSize: 14, color: '#1DB954', fontWeight: '600' },
   headerInfo: { gap: 4 },
@@ -344,30 +483,18 @@ const styles = StyleSheet.create({
   operatorName: { fontSize: 14, color: '#1DB954', fontWeight: '600' },
   address: { fontSize: 13, color: '#888', marginTop: 2 },
 
-  section: {
-    backgroundColor: '#fff',
-    marginTop: 10,
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 14,
-  },
+  section: { backgroundColor: '#fff', marginTop: 10, padding: 16 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 14 },
 
-  statusRow: {
-    flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
-  },
+  statusRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
   statusItem: { alignItems: 'center', flex: 1 },
   statusValue: { fontSize: 24, fontWeight: '800', color: '#1a1a1a' },
   statusLabel: { fontSize: 11, color: '#999', marginTop: 4 },
   divider: { width: 1, height: 40, backgroundColor: '#f0f0f0' },
 
   priceHighlight: {
-    backgroundColor: '#1DB954',
-    marginTop: 10,
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    backgroundColor: '#1DB954', marginTop: 10, padding: 20,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   priceHighlightLabel: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
   priceHighlightValue: { fontSize: 32, fontWeight: '900', color: '#fff', marginTop: 4 },
@@ -400,13 +527,46 @@ const styles = StyleSheet.create({
   chargerStatus: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   chargerStatusText: { fontSize: 12, fontWeight: '600' },
 
+  scanDesc: { fontSize: 13, color: '#888', marginBottom: 14, lineHeight: 18 },
+  scanBtnRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  scanBtn: {
+    flex: 1, backgroundColor: '#1DB954', borderRadius: 10,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  scanBtnOutline: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#1DB954' },
+  scanBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  scanningBox: { alignItems: 'center', paddingVertical: 24, gap: 12 },
+  scanningText: { fontSize: 14, color: '#888' },
+  scanResultBox: { backgroundColor: '#f0fdf4', borderRadius: 12, padding: 14, gap: 12 },
+  scanKwh: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+
+  carbonGrid: { flexDirection: 'row', gap: 12 },
+  carbonItem: {
+    flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 12, gap: 4,
+  },
+  carbonItemValue: { fontSize: 15, fontWeight: '800', color: '#1DB954' },
+  carbonItemSub: { fontSize: 12, color: '#666' },
+  carbonDisclaimer: {
+    fontSize: 11, color: '#999', marginTop: 10, textAlign: 'center', lineHeight: 16,
+  },
+
+  pointsEarnedRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  pointsEarnedText: { fontSize: 16, fontWeight: '800', color: '#1DB954' },
+  claimBtn: {
+    backgroundColor: '#1DB954', borderRadius: 8,
+    paddingHorizontal: 16, paddingVertical: 8,
+  },
+  claimBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  scanNotFound: { fontSize: 14, color: '#FF3B30', textAlign: 'center' },
+  rescanText: { fontSize: 13, color: '#888', textAlign: 'center' },
+
   noteRow: { marginBottom: 10 },
   noteLabel: { fontSize: 12, color: '#999', marginBottom: 4 },
   noteValue: { fontSize: 14, color: '#1a1a1a', lineHeight: 20 },
 
-  reviewRow: {
-    paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0',
-  },
+  reviewRow: { paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0' },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   reviewRating: { fontSize: 14, color: '#FF9500' },
   reviewDate: { fontSize: 12, color: '#999' },
@@ -417,10 +577,16 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#fff', padding: 16, paddingBottom: 32,
     borderTopWidth: 0.5, borderTopColor: '#eee',
+    flexDirection: 'row', gap: 12,
   },
+  contributeBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: '#1DB954',
+    borderRadius: 12, paddingVertical: 14, alignItems: 'center',
+  },
+  contributeBtnText: { color: '#1DB954', fontSize: 15, fontWeight: '700' },
   navBtn: {
-    backgroundColor: '#1DB954', borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center',
+    flex: 1, backgroundColor: '#1DB954',
+    borderRadius: 12, paddingVertical: 14, alignItems: 'center',
   },
-  navBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  navBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

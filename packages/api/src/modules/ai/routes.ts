@@ -6,6 +6,8 @@ import { sql } from 'drizzle-orm';
 const FEATHERLESS_KEY = 'rc_99f363be1cd77ac59bc3ddd66211aecaedff98500d57833149275cbede77bfd6';
 
 export async function aiRoutes(app: FastifyInstance) {
+
+  // POST /api/v1/ai/chat
   app.post('/chat', async (request, reply) => {
     const parsed = z.object({
       message: z.string().min(1).max(500),
@@ -89,17 +91,88 @@ ${stationContext}
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Featherless API error: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Featherless API error: ${response.status}`);
 
       const data = await response.json() as any;
-      const aiReply = data.choices[0].message.content;
-
-      return { reply: aiReply };
+      return { reply: data.choices[0].message.content };
     } catch (err) {
       console.error('AI error:', err);
       return reply.code(500).send({ error: 'AI 服务暂时不可用，请稍后再试' });
+    }
+  });
+
+  // POST /api/v1/ai/scan-receipt
+  app.post('/scan-receipt', async (request, reply) => {
+    const parsed = z.object({
+      imageBase64: z.string().min(1),
+      mimeType: z.string().default('image/jpeg'),
+    }).safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send({ error: '参数错误' });
+    }
+
+    const { imageBase64, mimeType } = parsed.data;
+
+    try {
+      const response = await fetch('https://api.featherless.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${FEATHERLESS_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'Qwen/Qwen3-VL-30B-A3B-Instruct',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${mimeType};base64,${imageBase64}`,
+                  },
+                },
+                {
+                  type: 'text',
+                  text: `请识别这张充电账单截图，找出本次充电的度数（kWh）。
+只返回一个JSON对象，格式如下，不要返回其他任何内容：
+{"kwh": 数字, "found": true}
+如果找不到充电度数，返回：
+{"kwh": 0, "found": false}`,
+                },
+              ],
+            },
+          ],
+          max_tokens: 100,
+          temperature: 0.1,
+        }),
+      });
+
+      if (!response.ok) throw new Error(`Featherless API error: ${response.status}`);
+
+      const data = await response.json() as any;
+      const content = data.choices[0].message.content;
+
+      const jsonMatch = content.match(/\{.*\}/s);
+      if (!jsonMatch) throw new Error('无法解析 AI 返回结果');
+
+      const result = JSON.parse(jsonMatch[0]);
+      const kwh = parseFloat(result.kwh) || 0;
+      const co2Saved = kwh * 0.094;
+      const points = Math.floor(kwh * 2);
+
+      return {
+        kwh,
+        found: result.found,
+        co2Saved: co2Saved.toFixed(2),
+        kmEquivalent: (kwh * 6).toFixed(0),
+        treesEquivalent: (co2Saved / 18).toFixed(3),
+        pointsEarned: points,
+      };
+    } catch (err) {
+      console.error('Scan receipt error:', err);
+      return reply.code(500).send({ error: '识别失败，请重试' });
     }
   });
 }

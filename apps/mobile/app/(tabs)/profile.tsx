@@ -61,7 +61,6 @@ export default function ProfileScreen() {
   if (!isLoggedIn()) {
     return (
       <View style={styles.guestContainer}>
-        <Text style={styles.guestIcon}>👤</Text>
         <Text style={styles.guestTitle}>登录后解锁更多功能</Text>
         <Text style={styles.guestDesc}>
           贡献价格数据、赢取积分、解锁专属徽章
@@ -80,6 +79,11 @@ export default function ProfileScreen() {
   const points = user?.points ?? 0;
   const nextPoints = TIER_NEXT_POINTS[tier];
   const progress = Math.min(points / nextPoints, 1);
+
+  // 碳减排计算
+  const co2Saved = (points * 0.5).toFixed(1);
+  const treesSaved = (points * 0.5 / 18).toFixed(1);
+  const kmSaved = (points * 0.5 / 0.094 / 1000).toFixed(0);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -116,20 +120,43 @@ export default function ProfileScreen() {
         </Text>
       </View>
 
+      {/* 碳减排卡片 */}
+      <View style={styles.carbonCard}>
+        <Text style={styles.sectionTitle}>累计碳减排贡献</Text>
+        <View style={styles.carbonRow}>
+          <View style={styles.carbonStat}>
+            <Text style={styles.carbonValue}>{co2Saved}</Text>
+            <Text style={styles.carbonLabel}>kg CO₂ 减排</Text>
+          </View>
+          <View style={styles.carbonDivider} />
+          <View style={styles.carbonStat}>
+            <Text style={styles.carbonValue}>{treesSaved}</Text>
+            <Text style={styles.carbonLabel}>等效种树（棵）</Text>
+          </View>
+          <View style={styles.carbonDivider} />
+          <View style={styles.carbonStat}>
+            <Text style={styles.carbonValue}>{kmSaved}</Text>
+            <Text style={styles.carbonLabel}>等效少开（km）</Text>
+          </View>
+        </View>
+        <Text style={styles.carbonNote}>
+          基于你的充电贡献数据估算，每次充电记录约减少 0.5kg CO₂
+        </Text>
+      </View>
+
       {/* 积分说明 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>如何获取积分</Text>
         <View style={styles.earnGrid}>
           {[
-            { action: '更新价格', points: 15, icon: '💰' },
-            { action: '排队报告', points: 8,  icon: '🚗' },
-            { action: '故障上报', points: 12, icon: '🔧' },
-            { action: '撰写评价', points: 10, icon: '⭐' },
-            { action: '进站提示', points: 10, icon: '📍' },
-            { action: '新增站点', points: 20, icon: '➕' },
+            { action: '更新价格', points: 15 },
+            { action: '排队报告', points: 8  },
+            { action: '故障上报', points: 12 },
+            { action: '撰写评价', points: 10 },
+            { action: '进站提示', points: 10 },
+            { action: '新增站点', points: 20 },
           ].map((item) => (
             <View key={item.action} style={styles.earnItem}>
-              <Text style={styles.earnIcon}>{item.icon}</Text>
               <Text style={styles.earnAction}>{item.action}</Text>
               <Text style={styles.earnPoints}>+{item.points}分</Text>
             </View>
@@ -145,12 +172,12 @@ export default function ProfileScreen() {
         ) : transactions.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>暂无记录，去贡献数据赚积分吧！</Text>
-        <TouchableOpacity
-  style={styles.contributeBtn}
-  onPress={() => router.push('/')}
->
-  <Text style={styles.contributeBtnText}>去地图找充电站</Text>
-</TouchableOpacity>
+            <TouchableOpacity
+              style={styles.contributeBtn}
+              onPress={() => router.push('/')}
+            >
+              <Text style={styles.contributeBtnText}>去地图找充电站</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           transactions.slice(0, 10).map((t, i) => (
@@ -181,7 +208,6 @@ const styles = StyleSheet.create({
     flex: 1, justifyContent: 'center', alignItems: 'center',
     padding: 32, backgroundColor: '#fff',
   },
-  guestIcon: { fontSize: 64, marginBottom: 16 },
   guestTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 },
   guestDesc: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 32, lineHeight: 22 },
   loginBtn: {
@@ -225,6 +251,23 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: '#fff', borderRadius: 3 },
   progressText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 6 },
 
+  carbonCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  carbonRow: {
+    flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
+    marginBottom: 12,
+  },
+  carbonStat: { alignItems: 'center', flex: 1 },
+  carbonValue: { fontSize: 22, fontWeight: '800', color: '#1DB954' },
+  carbonLabel: { fontSize: 11, color: '#999', marginTop: 4, textAlign: 'center' },
+  carbonDivider: { width: 1, height: 40, backgroundColor: '#f0f0f0' },
+  carbonNote: {
+    fontSize: 11, color: '#999', textAlign: 'center', lineHeight: 16,
+  },
+
   section: {
     backgroundColor: '#fff', borderRadius: 16, padding: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
@@ -232,14 +275,11 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', marginBottom: 14 },
 
-  earnGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
-  },
+  earnGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   earnItem: {
     width: '30%', backgroundColor: '#f8f8f8', borderRadius: 10,
     padding: 10, alignItems: 'center', gap: 4,
   },
-  earnIcon: { fontSize: 24 },
   earnAction: { fontSize: 11, color: '#666', textAlign: 'center' },
   earnPoints: { fontSize: 13, fontWeight: '700', color: '#1DB954' },
 
