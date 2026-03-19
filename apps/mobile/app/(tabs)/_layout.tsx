@@ -40,6 +40,15 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+  name="ai"
+  options={{
+    title: 'AI 助手',
+    tabBarIcon: ({ color }) => (
+      <Ionicons name="chatbubble-ellipses" size={24} color={color} />
+    ),
+  }}
+/>
     </Tabs>
   );
 }

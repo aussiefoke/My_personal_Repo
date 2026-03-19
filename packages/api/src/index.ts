@@ -11,6 +11,7 @@ import { contributionsRoutes } from './modules/contributions/routes';
 import { reviewsRoutes }       from './modules/reviews/routes';
 import { calculatorRoutes }    from './modules/calculator/routes';
 import { adminRoutes }         from './modules/admin/routes';
+import { aiRoutes } from './modules/ai/routes';
 
 const app = Fastify({
   logger: {
@@ -40,6 +41,7 @@ async function bootstrap() {
   await app.register(reviewsRoutes,       { prefix: '/api/v1/reviews' });
   await app.register(calculatorRoutes,    { prefix: '/api/v1/calculator' });
   await app.register(adminRoutes,         { prefix: '/api/v1/admin' });
+  await app.register(aiRoutes, { prefix: '/api/v1/ai' });
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
