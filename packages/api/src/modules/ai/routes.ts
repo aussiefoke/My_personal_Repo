@@ -127,19 +127,35 @@ ${stationContext}
                 },
                 {
                   type: 'text',
-                  text: `请识别这张充电账单截图，找出：
-1. 本次充电的度数（kWh）
-2. 充电日期
+                  text: `你是充电账单验证专家。请分析这张图片。
 
-只返回JSON，不要返回其他内容：
-{"kwh": 数字, "date": "YYYY-MM-DD", "found": true}
-找不到返回：
-{"kwh": 0, "date": null, "found": false}`,
+第一步：判断这是否是电动车充电账单。
+充电账单必须同时满足以下全部条件：
+- 图片类型是账单/收据/订单截图，而不是日历、表格、图表
+- 明确包含"充电"、"kWh"、"度"、"充电桩"、"充电站"等文字
+- 明确包含充电度数数值（必须有"度"或"kWh"单位，纯数字不算）
+- 运营商是充电类平台（特来电、星星充电、国家电网、云快充、小桔充电、电e宝等）
+
+以下情况直接拒绝：
+- 股票/基金/投资盈亏记录
+- 银行流水/账户余额/转账记录
+- 日历/月度汇总/数据图表
+- 超市/便利店/餐饮/外卖/购物小票
+- 停车缴费单
+- 截图中没有明确"度"或"kWh"单位的任何图片
+
+如果不是充电账单，返回：
+{"valid": false, "reason": "具体拒绝原因"}
+
+如果是充电账单，提取信息并返回：
+{"valid": true, "kwh": 充电度数数字, "date": "YYYY-MM-DD", "operator": "运营商名称"}
+
+只返回JSON，不要任何其他文字。`,
                 },
               ],
             },
           ],
-          max_tokens: 100,
+          max_tokens: 150,
           temperature: 0.1,
         }),
       });
@@ -152,6 +168,25 @@ ${stationContext}
       if (!jsonMatch) throw new Error('无法解析 AI 返回结果');
 
       const result = JSON.parse(jsonMatch[0]);
+
+      // 拒绝非充电账单
+      if (!result.valid) {
+        return {
+          kwh: 0,
+          found: false,
+          reason: result.reason ?? '非充电账单，无法领取积分',
+        };
+      }
+
+      // 硬校验：kwh必须是合理充电量
+      const kwhRaw = parseFloat(result.kwh);
+      if (!result.kwh || isNaN(kwhRaw) || kwhRaw < 0.1 || kwhRaw > 100) {
+        return {
+          kwh: 0,
+          found: false,
+          reason: '无法识别有效充电度数，请上传充电账单截图',
+        };
+      }
 
       // 验证账单日期不超过7天
       if (result.date) {
@@ -166,13 +201,13 @@ ${stationContext}
         }
       }
 
-      const kwh = Math.min(parseFloat(result.kwh) || 0, 100); // 最多100度
+      const kwh = Math.min(kwhRaw, 100);
       const co2Saved = kwh * 0.094;
-      const points = Math.min(Math.floor(kwh * 2), 200); // 最多200积分
+      const points = Math.min(Math.floor(kwh * 2), 200);
 
       return {
         kwh,
-        found: result.found,
+        found: true,
         co2Saved: co2Saved.toFixed(2),
         kmEquivalent: (kwh * 6).toFixed(0),
         treesEquivalent: (co2Saved / 18).toFixed(3),
@@ -202,11 +237,11 @@ ${stationContext}
         AND action_type = 'carbon_receipt'
         AND created_at > NOW() - INTERVAL '24 hours'
     `);
-const todayRows = Array.isArray(todayResult) ? todayResult : (todayResult as any).rows ?? [];
-const todayCount = parseInt(todayRows[0]?.count ?? '0');
-if (todayCount >= 1) {
-  return reply.code(429).send({ error: '今日已领取过碳积分，明天再来' });
-}
+    const todayRows = Array.isArray(todayResult) ? todayResult : (todayResult as any).rows ?? [];
+    const todayCount = parseInt(todayRows[0]?.count ?? '0');
+    if (todayCount >= 1) {
+      return reply.code(429).send({ error: '今日已领取过碳积分，明天再来' });
+    }
 
     const points = Math.min(Math.floor(parsed.data.kwh * 2), 200);
 

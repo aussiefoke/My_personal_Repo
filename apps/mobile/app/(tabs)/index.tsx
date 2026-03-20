@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Linking, A
 import { useEffect, useState } from 'react';
 import { WebView } from 'react-native-webview';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 import { rankingApi } from '../../lib/api';
 
 interface Station {
@@ -21,18 +22,62 @@ interface Station {
   recommendLabel: string;
 }
 
+// 深圳福田默认坐标（定位失败时兜底）
+const DEFAULT_LAT = 22.5396;
+const DEFAULT_LNG = 114.0577;
+
 export default function MapScreen() {
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Station | null>(null);
+  const [userLat, setUserLat] = useState(DEFAULT_LAT);
+  const [userLng, setUserLng] = useState(DEFAULT_LNG);
+  const [locationLabel, setLocationLabel] = useState<string>('定位中...');
 
   useEffect(() => {
-    loadStations();
+    initLocation();
   }, []);
 
-  const loadStations = async () => {
+  const initLocation = async () => {
     try {
-      const res = await rankingApi.nearby(22.5396, 114.0577, 'best', 30);
+      // 请求定位权限
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== 'granted') {
+        // 用户拒绝，用默认坐标并提示
+        Alert.alert(
+          '未获取定位权限',
+          '将使用深圳福田默认位置显示附近充电站。如需使用真实位置，请在设置中开启定位权限。',
+          [
+            { text: '去设置', onPress: () => Linking.openSettings() },
+            { text: '继续使用默认位置', style: 'cancel' },
+          ]
+        );
+        setLocationLabel('默认位置（深圳福田）');
+        loadStations(DEFAULT_LAT, DEFAULT_LNG);
+        return;
+      }
+
+      // 获取当前位置
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = location.coords;
+      setUserLat(latitude);
+      setUserLng(longitude);
+      setLocationLabel('当前位置');
+      loadStations(latitude, longitude);
+    } catch (e) {
+      console.error('定位失败:', e);
+      setLocationLabel('定位失败，使用默认位置');
+      loadStations(DEFAULT_LAT, DEFAULT_LNG);
+    }
+  };
+
+  const loadStations = async (lat: number, lng: number) => {
+    try {
+      const res = await rankingApi.nearby(lat, lng, 'best', 30);
       setStations(res.data.stations);
     } catch (e) {
       console.error(e);
@@ -99,6 +144,11 @@ export default function MapScreen() {
     .price-main { color: #fff; font-size: 20px; font-weight: 900; line-height: 1.1; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
     .price-sub { color: rgba(255,255,255,0.9); font-size: 11px; font-weight: 600; margin-top: 1px; }
     .price-tail { width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; margin-top: -1px; }
+    .user-dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #1DB954; border: 3px solid #fff;
+      box-shadow: 0 0 0 4px rgba(29,185,84,0.3);
+    }
   </style>
 </head>
 <body>
@@ -108,10 +158,11 @@ export default function MapScreen() {
     var map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [114.0577, 22.5396],
+      center: [${userLng}, ${userLat}],
       zoom: 12
     });
     map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+
     var stations = ${JSON.stringify(stations.map(s => ({
       id: s.id,
       name: s.name,
@@ -122,7 +173,17 @@ export default function MapScreen() {
       label: s.recommendLabel,
       distance: s.distanceKm,
     })))};
+
     map.on('load', function() {
+
+      // 用户位置蓝点（绿点）
+      var userEl = document.createElement('div');
+      userEl.className = 'user-dot';
+      new mapboxgl.Marker({ element: userEl })
+        .setLngLat([${userLng}, ${userLat}])
+        .addTo(map);
+
+      // 充电站标记
       stations.forEach(function(s) {
         var color = s.score > 0.7 ? '#16a34a' : s.score > 0.4 ? '#ea580c' : '#dc2626';
         var priceText = s.price ? '¥' + s.price.toFixed(2) : '--';
@@ -152,10 +213,18 @@ export default function MapScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#1DB954" />
-          <Text style={styles.loadingText}>正在查找附近充电站...</Text>
+          <Text style={styles.loadingText}>正在获取位置，查找附近充电站...</Text>
         </View>
       ) : (
         <>
+          {/* 位置状态提示条 */}
+          <View style={styles.locationBar}>
+            <Text style={styles.locationText}>📍 {locationLabel}</Text>
+            <TouchableOpacity onPress={initLocation}>
+              <Text style={styles.relocateText}>重新定位</Text>
+            </TouchableOpacity>
+          </View>
+
           <WebView
             style={styles.map}
             source={{ html: mapHtml }}
@@ -217,6 +286,15 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, color: '#666', fontSize: 14 },
+
+  locationBar: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8,
+    borderBottomWidth: 0.5, borderBottomColor: '#eee',
+  },
+  locationText: { fontSize: 13, color: '#333' },
+  relocateText: { fontSize: 13, color: '#1DB954', fontWeight: '600' },
+
   bottomCard: {
     position: 'absolute', bottom: 20, left: 16, right: 16,
     backgroundColor: '#fff', borderRadius: 16, padding: 16,

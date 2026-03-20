@@ -4,23 +4,27 @@ import { db, schema } from '../../shared/db/client';
 export async function getNearbyStations(
   lat: number,
   lng: number,
-  radiusKm: number = 5
+  radiusKm: number = 5,
+  ignoreRadius: boolean = false
 ) {
-  // 用简单的边界框查询（MVP 阶段不需要完整 PostGIS，数据量小时够用）
-  const latDelta = radiusKm / 111;
-  const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
+  let rows;
 
-  const rows = await db
-    .select()
-    .from(schema.stations)
-    .where(
-      and(
-        sql`${schema.stations.lat} BETWEEN ${lat - latDelta} AND ${lat + latDelta}`,
-        sql`${schema.stations.lng} BETWEEN ${lng - lngDelta} AND ${lng + lngDelta}`,
-      )
-    );
+  if (ignoreRadius) {
+    rows = await db.select().from(schema.stations);
+  } else {
+    const latDelta = radiusKm / 111;
+    const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
+    rows = await db
+      .select()
+      .from(schema.stations)
+      .where(
+        and(
+          sql`${schema.stations.lat} BETWEEN ${lat - latDelta} AND ${lat + latDelta}`,
+          sql`${schema.stations.lng} BETWEEN ${lng - lngDelta} AND ${lng + lngDelta}`,
+        )
+      );
+  }
 
-  // 加上直线距离（前端排序用）
   return rows.map((s) => {
     const dLat = s.lat - lat;
     const dLng = s.lng - lng;
@@ -60,7 +64,6 @@ export async function getStationWithDetails(id: string) {
     .orderBy(sql`${schema.reviews.createdAt} DESC`)
     .limit(10);
 
-    
   const recentReports = await db
     .select()
     .from(schema.contributions)

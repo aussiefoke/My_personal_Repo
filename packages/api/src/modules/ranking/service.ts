@@ -31,11 +31,10 @@ export async function getRankedStations(
   sortBy: SortBy = 'best'
 ): Promise<ScoredStation[]> {
   const period = getCurrentPricePeriod();
-  const nearby = await getNearbyStations(lat, lng, radiusKm);
+  const nearby = await getNearbyStations(lat, lng, radiusKm, true);
 
   const enriched = await Promise.all(
     nearby.map(async (s) => {
-      // 最新价格
       const [latestPrice] = await db
         .select()
         .from(schema.priceSnapshots)
@@ -43,7 +42,6 @@ export async function getRankedStations(
         .orderBy(sql`${schema.priceSnapshots.createdAt} DESC`)
         .limit(1);
 
-      // 可用充电桩数量
       const availableChargers = await db
         .select()
         .from(schema.chargerUnits)
@@ -54,7 +52,6 @@ export async function getRankedStations(
           )
         );
 
-      // 近2小时的排队报告
       const queueReports = await db
         .select()
         .from(schema.contributions)
@@ -75,7 +72,6 @@ export async function getRankedStations(
     })
   );
 
-  // 计算各项归一化分数
   const prices = enriched
     .map((s) => {
       if (!s.latestPrice) return null;
@@ -115,7 +111,7 @@ export async function getRankedStations(
       availScore * 0.25 +
       distScore * 0.20 +
       reliScore * 0.15 +
-      0.05; // speed placeholder
+      0.05;
 
     const recommendLabel = (() => {
       if (priceScore > 0.8 && availScore > 0.6) return '价格最优，当前有空位';
@@ -146,7 +142,6 @@ export async function getRankedStations(
     };
   });
 
-  // 排序
   return scored.sort((a, b) => {
     switch (sortBy) {
       case 'cheapest': {

@@ -5,14 +5,8 @@ import {
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
+import { useLanguageStore } from '../../store/languageStore';
 import { apiClient } from '../../lib/api';
-
-const TIER_LABELS: Record<string, string> = {
-  newbie:   '充电新手',
-  regular:  '充电达人',
-  expert:   '充电专家',
-  guardian: '充电守护者',
-};
 
 const TIER_COLORS: Record<string, string> = {
   newbie:   '#888',
@@ -30,6 +24,7 @@ const TIER_NEXT_POINTS: Record<string, number> = {
 
 export default function ProfileScreen() {
   const { user, token, logout, isLoggedIn } = useAuthStore();
+  const { language, setLanguage, t } = useLanguageStore();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -50,26 +45,24 @@ export default function ProfileScreen() {
   };
 
   const ACTION_LABELS: Record<string, string> = {
-    price_update: '更新价格',
-    queue:        '排队报告',
-    fault:        '故障上报',
-    access_tip:   '进站提示',
-    review:       '撰写评价',
-    new_station:  '新增站点',
+    price_update: t('contribute.price_update'),
+    queue:        t('contribute.queue_report'),
+    fault:        t('contribute.fault_report'),
+    access_tip:   t('contribute.checkin'),
+    review:       t('profile.write_review'),
+    new_station:  t('profile.new_station'),
   };
 
   if (!isLoggedIn()) {
     return (
       <View style={styles.guestContainer}>
-        <Text style={styles.guestTitle}>登录后解锁更多功能</Text>
-        <Text style={styles.guestDesc}>
-          贡献价格数据、赢取积分、解锁专属徽章
-        </Text>
+        <Text style={styles.guestTitle}>{t('profile.guest_title')}</Text>
+        <Text style={styles.guestDesc}>{t('profile.guest_desc')}</Text>
         <TouchableOpacity
           style={styles.loginBtn}
           onPress={() => router.push('/auth/login')}
         >
-          <Text style={styles.loginBtnText}>立即登录</Text>
+          <Text style={styles.loginBtnText}>{t('profile.login')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -80,7 +73,6 @@ export default function ProfileScreen() {
   const nextPoints = TIER_NEXT_POINTS[tier];
   const progress = Math.min(points / nextPoints, 1);
 
-  // 碳减排计算
   const co2Saved = (points * 0.5).toFixed(1);
   const treesSaved = (points * 0.5 / 18).toFixed(1);
   const kmSaved = (points * 0.5 / 0.094 / 1000).toFixed(0);
@@ -99,66 +91,87 @@ export default function ProfileScreen() {
           <Text style={styles.phone}>+86 {user?.phone}</Text>
           <View style={[styles.tierBadge, { backgroundColor: TIER_COLORS[tier] + '22' }]}>
             <Text style={[styles.tierText, { color: TIER_COLORS[tier] }]}>
-              {TIER_LABELS[tier]}
+              {t(`level.${tier}`)}
             </Text>
           </View>
         </View>
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-          <Text style={styles.logoutText}>退出</Text>
+          <Text style={styles.logoutText}>{t('profile.logout')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* 积分卡片 */}
       <View style={styles.pointsCard}>
-        <Text style={styles.pointsLabel}>我的积分</Text>
+        <Text style={styles.pointsLabel}>{t('profile.points')}</Text>
         <Text style={styles.pointsValue}>{points}</Text>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={styles.progressText}>
-          距下一等级还需 {Math.max(nextPoints - points, 0)} 积分
+          {t('profile.points_to_next')} {Math.max(nextPoints - points, 0)} {t('profile.points_unit')}
         </Text>
       </View>
 
       {/* 碳减排卡片 */}
       <View style={styles.carbonCard}>
-        <Text style={styles.sectionTitle}>累计碳减排贡献</Text>
+        <Text style={styles.sectionTitle}>{t('profile.carbon_title')}</Text>
         <View style={styles.carbonRow}>
           <View style={styles.carbonStat}>
             <Text style={styles.carbonValue}>{co2Saved}</Text>
-            <Text style={styles.carbonLabel}>kg CO₂ 减排</Text>
+            <Text style={styles.carbonLabel}>kg CO₂</Text>
           </View>
           <View style={styles.carbonDivider} />
           <View style={styles.carbonStat}>
             <Text style={styles.carbonValue}>{treesSaved}</Text>
-            <Text style={styles.carbonLabel}>等效种树（棵）</Text>
+            <Text style={styles.carbonLabel}>{t('profile.trees')}</Text>
           </View>
           <View style={styles.carbonDivider} />
           <View style={styles.carbonStat}>
             <Text style={styles.carbonValue}>{kmSaved}</Text>
-            <Text style={styles.carbonLabel}>等效少开（km）</Text>
+            <Text style={styles.carbonLabel}>{t('profile.km_saved')}</Text>
           </View>
         </View>
-        <Text style={styles.carbonNote}>
-          基于你的充电贡献数据估算，每次充电记录约减少 0.5kg CO₂
-        </Text>
+        <Text style={styles.carbonNote}>{t('profile.carbon_note')}</Text>
+      </View>
+
+      {/* 语言切换 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('profile.language')}</Text>
+        <View style={styles.langToggleWrap}>
+          <TouchableOpacity
+            style={[styles.langBtn, language === 'zh' && styles.langBtnActive]}
+            onPress={() => setLanguage('zh')}
+          >
+            <Text style={[styles.langText, language === 'zh' && styles.langTextActive]}>
+              🇨🇳 中文
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.langBtn, language === 'en' && styles.langBtnActive]}
+            onPress={() => setLanguage('en')}
+          >
+            <Text style={[styles.langText, language === 'en' && styles.langTextActive]}>
+              🇬🇧 English
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 积分说明 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>如何获取积分</Text>
+        <Text style={styles.sectionTitle}>{t('profile.how_to_earn')}</Text>
         <View style={styles.earnGrid}>
           {[
-            { action: '更新价格', points: 15 },
-            { action: '排队报告', points: 8  },
-            { action: '故障上报', points: 12 },
-            { action: '撰写评价', points: 10 },
-            { action: '进站提示', points: 10 },
-            { action: '新增站点', points: 20 },
+            { key: 'contribute.price_update', pts: 15 },
+            { key: 'contribute.queue_report',  pts: 8  },
+            { key: 'contribute.fault_report',  pts: 12 },
+            { key: 'profile.write_review',     pts: 10 },
+            { key: 'contribute.checkin',       pts: 10 },
+            { key: 'profile.new_station',      pts: 20 },
           ].map((item) => (
-            <View key={item.action} style={styles.earnItem}>
-              <Text style={styles.earnAction}>{item.action}</Text>
-              <Text style={styles.earnPoints}>+{item.points}分</Text>
+            <View key={item.key} style={styles.earnItem}>
+              <Text style={styles.earnAction}>{t(item.key)}</Text>
+              <Text style={styles.earnPoints}>+{item.pts}{t('profile.points_unit')}</Text>
             </View>
           ))}
         </View>
@@ -166,31 +179,31 @@ export default function ProfileScreen() {
 
       {/* 积分记录 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>积分记录</Text>
+        <Text style={styles.sectionTitle}>{t('profile.transactions')}</Text>
         {loading ? (
           <ActivityIndicator color="#1DB954" style={{ marginTop: 16 }} />
         ) : transactions.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>暂无记录，去贡献数据赚积分吧！</Text>
+            <Text style={styles.emptyText}>{t('profile.no_records')}</Text>
             <TouchableOpacity
               style={styles.contributeBtn}
               onPress={() => router.push('/')}
             >
-              <Text style={styles.contributeBtnText}>去地图找充电站</Text>
+              <Text style={styles.contributeBtnText}>{t('profile.go_map')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          transactions.slice(0, 10).map((t, i) => (
+          transactions.slice(0, 10).map((tx, i) => (
             <View key={i} style={styles.txRow}>
               <View>
                 <Text style={styles.txAction}>
-                  {ACTION_LABELS[t.actionType] ?? t.actionType}
+                  {ACTION_LABELS[tx.actionType] ?? tx.actionType}
                 </Text>
                 <Text style={styles.txTime}>
-                  {new Date(t.createdAt).toLocaleDateString('zh-CN')}
+                  {new Date(tx.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-AU')}
                 </Text>
               </View>
-              <Text style={styles.txPoints}>+{t.amount}分</Text>
+              <Text style={styles.txPoints}>+{tx.amount}{t('profile.points_unit')}</Text>
             </View>
           ))
         )}
@@ -258,15 +271,13 @@ const styles = StyleSheet.create({
   },
   carbonRow: {
     flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 12, marginBottom: 12,
   },
   carbonStat: { alignItems: 'center', flex: 1 },
   carbonValue: { fontSize: 22, fontWeight: '800', color: '#1DB954' },
   carbonLabel: { fontSize: 11, color: '#999', marginTop: 4, textAlign: 'center' },
   carbonDivider: { width: 1, height: 40, backgroundColor: '#f0f0f0' },
-  carbonNote: {
-    fontSize: 11, color: '#999', textAlign: 'center', lineHeight: 16,
-  },
+  carbonNote: { fontSize: 11, color: '#999', textAlign: 'center', lineHeight: 16 },
 
   section: {
     backgroundColor: '#fff', borderRadius: 16, padding: 16,
@@ -274,6 +285,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
   },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', marginBottom: 14 },
+
+  langToggleWrap: {
+    flexDirection: 'row',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    padding: 3,
+  },
+  langBtn: {
+    flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8,
+  },
+  langBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000', shadowOpacity: 0.08,
+    shadowRadius: 4, elevation: 2,
+  },
+  langText: { fontSize: 14, color: '#888', fontWeight: '500' },
+  langTextActive: { color: '#1a1a1a', fontWeight: '700' },
 
   earnGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   earnItem: {
