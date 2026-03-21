@@ -4,6 +4,7 @@ import { WebView } from 'react-native-webview';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { rankingApi } from '../../lib/api';
+import { useLanguageStore } from '../../store/languageStore';
 
 interface Station {
   id: string;
@@ -22,43 +23,41 @@ interface Station {
   recommendLabel: string;
 }
 
-// 深圳福田默认坐标（定位失败时兜底）
 const DEFAULT_LAT = 22.5396;
 const DEFAULT_LNG = 114.0577;
 
 export default function MapScreen() {
+  const { t } = useLanguageStore();
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Station | null>(null);
   const [userLat, setUserLat] = useState(DEFAULT_LAT);
   const [userLng, setUserLng] = useState(DEFAULT_LNG);
-  const [locationLabel, setLocationLabel] = useState<string>('定位中...');
+  const [locationLabel, setLocationLabel] = useState<string>('');
 
   useEffect(() => {
+    setLocationLabel(t('map.locating'));
     initLocation();
   }, []);
 
   const initLocation = async () => {
     try {
-      // 请求定位权限
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status !== 'granted') {
-        // 用户拒绝，用默认坐标并提示
         Alert.alert(
-          '未获取定位权限',
-          '将使用深圳福田默认位置显示附近充电站。如需使用真实位置，请在设置中开启定位权限。',
+          t('map.location_denied_title'),
+          t('map.location_denied_desc'),
           [
-            { text: '去设置', onPress: () => Linking.openSettings() },
-            { text: '继续使用默认位置', style: 'cancel' },
+            { text: t('map.go_settings'), onPress: () => Linking.openSettings() },
+            { text: t('map.use_default'), style: 'cancel' },
           ]
         );
-        setLocationLabel('默认位置（深圳福田）');
+        setLocationLabel(t('map.default_location'));
         loadStations(DEFAULT_LAT, DEFAULT_LNG);
         return;
       }
 
-      // 获取当前位置
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
@@ -66,11 +65,11 @@ export default function MapScreen() {
       const { latitude, longitude } = location.coords;
       setUserLat(latitude);
       setUserLng(longitude);
-      setLocationLabel('当前位置');
+      setLocationLabel(t('map.current_location'));
       loadStations(latitude, longitude);
     } catch (e) {
       console.error('定位失败:', e);
-      setLocationLabel('定位失败，使用默认位置');
+      setLocationLabel(t('map.location_failed'));
       loadStations(DEFAULT_LAT, DEFAULT_LNG);
     }
   };
@@ -102,9 +101,9 @@ export default function MapScreen() {
   const navigateTo = (station: Station) => {
     const { lat, lng, name } = station;
     const encodedName = encodeURIComponent(name);
-    Alert.alert('选择导航方式', '', [
+    Alert.alert(t('map.choose_nav'), '', [
       {
-        text: '高德地图',
+        text: t('map.amap'),
         onPress: () => {
           Linking.openURL(
             `iosamap://path?sourceApplication=ChargeSmart&dlat=${lat}&dlon=${lng}&dname=${encodedName}&dev=0&t=0`
@@ -112,14 +111,14 @@ export default function MapScreen() {
         },
       },
       {
-        text: '百度地图',
+        text: t('map.baidu_map'),
         onPress: () => {
           Linking.openURL(
             `baidumap://map/direction?destination=latlng:${lat},${lng}|name:${encodedName}&mode=driving&src=ChargeSmart`
           ).catch(() => Linking.openURL('https://apps.apple.com/cn/app/id452186370'));
         },
       },
-      { text: '取消', style: 'cancel' },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -175,15 +174,12 @@ export default function MapScreen() {
     })))};
 
     map.on('load', function() {
-
-      // 用户位置蓝点（绿点）
       var userEl = document.createElement('div');
       userEl.className = 'user-dot';
       new mapboxgl.Marker({ element: userEl })
         .setLngLat([${userLng}, ${userLat}])
         .addTo(map);
 
-      // 充电站标记
       stations.forEach(function(s) {
         var color = s.score > 0.7 ? '#16a34a' : s.score > 0.4 ? '#ea580c' : '#dc2626';
         var priceText = s.price ? '¥' + s.price.toFixed(2) : '--';
@@ -213,15 +209,14 @@ export default function MapScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#1DB954" />
-          <Text style={styles.loadingText}>正在获取位置，查找附近充电站...</Text>
+          <Text style={styles.loadingText}>{t('map.loading_location')}</Text>
         </View>
       ) : (
         <>
-          {/* 位置状态提示条 */}
           <View style={styles.locationBar}>
-            <Text style={styles.locationText}>📍 {locationLabel}</Text>
+            <Text style={styles.locationText}>{locationLabel}</Text>
             <TouchableOpacity onPress={initLocation}>
-              <Text style={styles.relocateText}>重新定位</Text>
+              <Text style={styles.relocateText}>{t('map.relocate')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -246,7 +241,7 @@ export default function MapScreen() {
               </TouchableOpacity>
               <TouchableOpacity onPress={() => router.push(`/station/${selected.id}`)}>
                 <Text style={styles.cardName}>{selected.name}</Text>
-                <Text style={styles.viewDetail}>查看详情 ›</Text>
+                <Text style={styles.viewDetail}>{t('map.view_detail')}</Text>
               </TouchableOpacity>
               <Text style={styles.cardAddress}>{selected.address}</Text>
               <View style={styles.cardRow}>
@@ -254,24 +249,24 @@ export default function MapScreen() {
                   <Text style={[styles.cardStatValue, { color: getScoreColor(selected.score) }]}>
                     ¥{getCurrentPrice(selected)?.toFixed(2) ?? '--'}
                   </Text>
-                  <Text style={styles.cardStatLabel}>当前单价/度</Text>
+                  <Text style={styles.cardStatLabel}>{t('map.price_per_kwh')}</Text>
                 </View>
                 <View style={styles.cardStat}>
                   <Text style={styles.cardStatValue}>{selected.distanceKm}km</Text>
-                  <Text style={styles.cardStatLabel}>距离</Text>
+                  <Text style={styles.cardStatLabel}>{t('station.km_away')}</Text>
                 </View>
                 <View style={styles.cardStat}>
                   <Text style={[styles.cardStatValue, { color: '#1DB954' }]}>
-                    {Math.round(selected.score * 100)}分
+                    {Math.round(selected.score * 100)}{t('rank.score_unit')}
                   </Text>
-                  <Text style={styles.cardStatLabel}>综合评分</Text>
+                  <Text style={styles.cardStatLabel}>{t('rank.score')}</Text>
                 </View>
               </View>
               <Text style={[styles.cardLabel, { color: getScoreColor(selected.score) }]}>
                 {selected.recommendLabel}
               </Text>
               <TouchableOpacity style={styles.navBtn} onPress={() => navigateTo(selected)}>
-                <Text style={styles.navBtnText}>开始导航</Text>
+                <Text style={styles.navBtnText}>{t('station.navigate')}</Text>
               </TouchableOpacity>
             </View>
           )}

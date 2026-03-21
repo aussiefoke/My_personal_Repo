@@ -100,13 +100,6 @@ ${stationContext}
           distanceKm: s.distance_km,
           price: s.total_flat ?? null,
         }));
-
-      console.log('=== AI DEBUG ===');
-      console.log('AI回复:', replyText);
-      console.log('站点名称列表:', stations.map((s: any) => s.name));
-      console.log('匹配到的站点:', mentionedStations);
-      console.log('================');
-
       return { reply: replyText, stations: mentionedStations };
     } catch (err) {
       console.error('AI error:', err);

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { useLanguageStore } from '../../store/languageStore';
 
 interface StationDetail {
   id: string;
@@ -77,20 +78,21 @@ const CHARGER_TYPE_NAMES: Record<string, string> = {
   DC_super: '超级快充',
 };
 
-const TIME_PERIODS = [
-  { label: '峰时', time: '08:00 - 22:00', key: 'totalPeak' },
-  { label: '平时', time: '12:00 - 17:00', key: 'totalFlat' },
-  { label: '谷时', time: '22:00 - 08:00', key: 'totalValley' },
-];
-
 export default function StationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { t, language } = useLanguageStore();
   const [station, setStation] = useState<StationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [claiming, setClaiming] = useState(false);
   const { isLoggedIn } = useAuthStore();
+
+  const TIME_PERIODS = [
+    { label: t('station.peak'), time: '08:00 - 22:00', key: 'totalPeak' },
+    { label: t('station.flat'), time: '12:00 - 17:00', key: 'totalFlat' },
+    { label: t('station.valley'), time: '22:00 - 08:00', key: 'totalValley' },
+  ];
 
   useEffect(() => {
     loadStation();
@@ -117,9 +119,9 @@ export default function StationDetailScreen() {
 
   const handleScan = async (useCamera: boolean) => {
     if (!isLoggedIn()) {
-      Alert.alert('请先登录', '登录后才能上传账单赚积分', [
-        { text: '去登录', onPress: () => router.push('/auth/login') },
-        { text: '取消', style: 'cancel' },
+      Alert.alert(t('station.login_required'), t('station.login_to_scan'), [
+        { text: t('station.go_login'), onPress: () => router.push('/auth/login') },
+        { text: t('common.cancel'), style: 'cancel' },
       ]);
       return;
     }
@@ -128,13 +130,13 @@ export default function StationDetailScreen() {
       if (useCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('需要相机权限', '请在设置中允许访问相机');
+          Alert.alert(t('station.camera_permission'), t('station.camera_permission_desc'));
           return;
         }
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('需要相册权限', '请在设置中允许访问相册');
+          Alert.alert(t('station.photo_permission'), t('station.photo_permission_desc'));
           return;
         }
       }
@@ -156,7 +158,7 @@ export default function StationDetailScreen() {
           });
           setScanResult(res.data);
         } catch (e) {
-          Alert.alert('识别失败', '请确保图片清晰，或稍后重试');
+          Alert.alert(t('station.scan_failed'), t('station.scan_failed_desc'));
         } finally {
           setScanning(false);
         }
@@ -175,13 +177,13 @@ export default function StationDetailScreen() {
         stationId: station.id,
       });
       Alert.alert(
-        '积分已到账',
-        `+${res.data.pointsEarned} 积分已添加到你的账户\n减少了 ${scanResult.co2Saved}kg CO₂ 排放`,
-        [{ text: '好的', onPress: () => setScanResult(null) }]
+        t('station.points_claimed'),
+        `+${res.data.pointsEarned} ${t('profile.points_unit')}\n${scanResult.co2Saved}kg CO₂`,
+        [{ text: t('common.confirm'), onPress: () => setScanResult(null) }]
       );
     } catch (e: any) {
-      const msg = e?.response?.data?.error ?? '领取失败，请稍后重试';
-      Alert.alert('领取失败', msg);
+      const msg = e?.response?.data?.error ?? t('station.claim_failed');
+      Alert.alert(t('station.claim_failed'), msg);
     } finally {
       setClaiming(false);
     }
@@ -191,9 +193,9 @@ export default function StationDetailScreen() {
     if (!station) return;
     const { lat, lng, name } = station;
     const encodedName = encodeURIComponent(name);
-    Alert.alert('选择导航方式', '', [
+    Alert.alert(t('map.choose_nav'), '', [
       {
-        text: '高德地图',
+        text: t('map.amap'),
         onPress: () => {
           Linking.openURL(
             `iosamap://path?sourceApplication=ChargeSmart&dlat=${lat}&dlon=${lng}&dname=${encodedName}&dev=0&t=0`
@@ -201,14 +203,14 @@ export default function StationDetailScreen() {
         },
       },
       {
-        text: '百度地图',
+        text: t('map.baidu_map'),
         onPress: () => {
           Linking.openURL(
             `baidumap://map/direction?destination=latlng:${lat},${lng}|name:${encodedName}&mode=driving&src=ChargeSmart`
           ).catch(() => Linking.openURL('https://apps.apple.com/cn/app/id452186370'));
         },
       },
-      { text: '取消', style: 'cancel' },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -223,7 +225,7 @@ export default function StationDetailScreen() {
   if (!station) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>充电站信息加载失败</Text>
+        <Text style={styles.errorText}>{t('common.error')}</Text>
       </View>
     );
   }
@@ -238,10 +240,9 @@ export default function StationDetailScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
 
-        {/* 头部 */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backText}>返回</Text>
+            <Text style={styles.backText}>{t('common.back')}</Text>
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={styles.stationName}>{station.name}</Text>
@@ -252,58 +253,55 @@ export default function StationDetailScreen() {
           </View>
         </View>
 
-        {/* 实时状态 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>实时状态</Text>
+          <Text style={styles.sectionTitle}>{t('station.realtime_status')}</Text>
           <View style={styles.statusRow}>
             <View style={styles.statusItem}>
               <Text style={styles.statusValue}>
                 {station.chargerCountDc + station.chargerCountAc}
               </Text>
-              <Text style={styles.statusLabel}>总充电桩</Text>
+              <Text style={styles.statusLabel}>{t('station.total_chargers')}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.statusItem}>
               <Text style={styles.statusValue}>{station.chargerCountDc}</Text>
-              <Text style={styles.statusLabel}>直流快充</Text>
+              <Text style={styles.statusLabel}>{t('station.dc_fast')}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.statusItem}>
               <Text style={styles.statusValue}>{station.chargerCountAc}</Text>
-              <Text style={styles.statusLabel}>交流慢充</Text>
+              <Text style={styles.statusLabel}>{t('station.ac_slow')}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.statusItem}>
               <Text style={[styles.statusValue, { color: '#1DB954' }]}>
                 {reliabilityPct}%
               </Text>
-              <Text style={styles.statusLabel}>可靠性</Text>
+              <Text style={styles.statusLabel}>{t('station.reliability')}</Text>
             </View>
           </View>
         </View>
 
-        {/* 当前价格高亮 */}
         {station.latestPrice && (
           <View style={styles.priceHighlight}>
             <View>
-              <Text style={styles.priceHighlightLabel}>当前电价</Text>
+              <Text style={styles.priceHighlightLabel}>{t('station.current_price')}</Text>
               <Text style={styles.priceHighlightValue}>
-                ¥{currentPrice?.toFixed(2)}/度
+                ¥{currentPrice?.toFixed(2)}{t('station.per_kwh')}
               </Text>
             </View>
             <View style={styles.priceHighlightRight}>
-              <Text style={styles.priceHighlightLabel}>服务费</Text>
+              <Text style={styles.priceHighlightLabel}>{t('station.service_fee')}</Text>
               <Text style={styles.priceHighlightSub}>
-                ¥{station.latestPrice.serviceFee.toFixed(2)}/度
+                ¥{station.latestPrice.serviceFee.toFixed(2)}{t('station.per_kwh')}
               </Text>
             </View>
           </View>
         )}
 
-        {/* 分时电价表 */}
         {station.latestPrice && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>分时电价</Text>
+            <Text style={styles.sectionTitle}>{t('station.time_of_use')}</Text>
             {TIME_PERIODS.map((p) => {
               const price = station.latestPrice![p.key as keyof typeof station.latestPrice] as number;
               const isNow =
@@ -319,11 +317,11 @@ export default function StationDetailScreen() {
                     <Text style={styles.periodTime}>{p.time}</Text>
                   </View>
                   <Text style={[styles.periodPrice, isNow && styles.periodPriceActive]}>
-                    ¥{price?.toFixed(2)}/度
+                    ¥{price?.toFixed(2)}{t('station.per_kwh')}
                   </Text>
                   {isNow && (
                     <View style={styles.nowBadge}>
-                      <Text style={styles.nowBadgeText}>当前</Text>
+                      <Text style={styles.nowBadgeText}>{t('station.now')}</Text>
                     </View>
                   )}
                 </View>
@@ -332,10 +330,9 @@ export default function StationDetailScreen() {
           </View>
         )}
 
-        {/* 充电桩列表 */}
         {station.chargers && station.chargers.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>充电桩详情</Text>
+            <Text style={styles.sectionTitle}>{t('station.charger_details')}</Text>
             {station.chargers.map((c) => (
               <View key={c.id} style={styles.chargerRow}>
                 <View>
@@ -354,9 +351,9 @@ export default function StationDetailScreen() {
                     styles.chargerStatusText,
                     { color: c.status === 'available' ? '#1DB954' : '#999' }
                   ]}>
-                    {c.status === 'available' ? '空闲' :
-                     c.status === 'occupied' ? '占用' :
-                     c.status === 'fault' ? '故障' : '未知'}
+                    {c.status === 'available' ? t('station.available') :
+                     c.status === 'occupied' ? t('station.occupied') :
+                     c.status === 'fault' ? t('station.fault') : t('station.unknown')}
                   </Text>
                 </View>
               </View>
@@ -364,53 +361,47 @@ export default function StationDetailScreen() {
           </View>
         )}
 
-        {/* 本次充电环保贡献攒积分 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>本次充电环保贡献攒积分</Text>
-          <Text style={styles.scanDesc}>
-            上传充电账单截图，AI 自动识别充电度数，计算碳减排并获取积分（每度电 2 积分，每日限领一次）
-          </Text>
+          <Text style={styles.sectionTitle}>{t('station.carbon_section')}</Text>
+          <Text style={styles.scanDesc}>{t('station.carbon_desc')}</Text>
 
           {scanning ? (
             <View style={styles.scanningBox}>
               <ActivityIndicator size="large" color="#1DB954" />
-              <Text style={styles.scanningText}>AI 正在识别账单...</Text>
+              <Text style={styles.scanningText}>{t('station.scanning')}</Text>
             </View>
           ) : !scanResult ? (
             <View style={styles.scanBtnRow}>
-              <TouchableOpacity
-                style={styles.scanBtn}
-                onPress={() => handleScan(false)}
-              >
-                <Text style={styles.scanBtnText}>从相册选择</Text>
+              <TouchableOpacity style={styles.scanBtn} onPress={() => handleScan(false)}>
+                <Text style={styles.scanBtnText}>{t('station.from_gallery')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.scanBtn, styles.scanBtnOutline]}
                 onPress={() => handleScan(true)}
               >
-                <Text style={[styles.scanBtnText, { color: '#1DB954' }]}>拍照上传</Text>
+                <Text style={[styles.scanBtnText, { color: '#1DB954' }]}>{t('station.take_photo')}</Text>
               </TouchableOpacity>
             </View>
           ) : scanResult.found ? (
             <View style={styles.scanResultBox}>
-              <Text style={styles.scanKwh}>识别度数：{scanResult.kwh} 度</Text>
+              <Text style={styles.scanKwh}>{t('station.recognized_kwh')}{scanResult.kwh} {t('station.kwh_unit')}</Text>
               <View style={styles.carbonGrid}>
                 <View style={styles.carbonItem}>
                   <Text style={styles.carbonItemValue}>{scanResult.co2Saved} kg</Text>
-                  <Text style={styles.carbonItemSub}>CO₂ 减排</Text>
+                  <Text style={styles.carbonItemSub}>CO₂</Text>
                 </View>
                 <View style={styles.carbonItem}>
                   <Text style={styles.carbonItemValue}>{scanResult.kmEquivalent} km</Text>
-                  <Text style={styles.carbonItemSub}>少开燃油车</Text>
+                  <Text style={styles.carbonItemSub}>{t('station.km_saved')}</Text>
                 </View>
                 <View style={styles.carbonItem}>
-                  <Text style={styles.carbonItemValue}>{scanResult.treesEquivalent} 棵</Text>
-                  <Text style={styles.carbonItemSub}>等效种树</Text>
+                  <Text style={styles.carbonItemValue}>{scanResult.treesEquivalent}</Text>
+                  <Text style={styles.carbonItemSub}>{t('station.trees')}</Text>
                 </View>
               </View>
               <View style={styles.pointsEarnedRow}>
                 <Text style={styles.pointsEarnedText}>
-                  可获得 +{scanResult.pointsEarned} 积分
+                  +{scanResult.pointsEarned} {t('profile.points_unit')}
                 </Text>
                 <TouchableOpacity
                   style={[styles.claimBtn, claiming && styles.claimBtnDisabled]}
@@ -419,52 +410,48 @@ export default function StationDetailScreen() {
                 >
                   {claiming
                     ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={styles.claimBtnText}>领取积分</Text>
+                    : <Text style={styles.claimBtnText}>{t('station.claim_points')}</Text>
                   }
                 </TouchableOpacity>
               </View>
               <TouchableOpacity onPress={() => setScanResult(null)}>
-                <Text style={styles.rescanText}>重新扫描</Text>
+                <Text style={styles.rescanText}>{t('station.rescan')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.scanResultBox}>
               <Text style={styles.scanNotFound}>
-                {scanResult.reason ?? '未能识别充电度数，请确保账单清晰可见'}
+                {scanResult.reason ?? t('station.scan_not_found')}
               </Text>
               <TouchableOpacity onPress={() => setScanResult(null)}>
-                <Text style={styles.rescanText}>重新扫描</Text>
+                <Text style={styles.rescanText}>{t('station.rescan')}</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          <Text style={styles.carbonDisclaimer}>
-            对比同等里程燃油车（8L/100km），电网排放系数 0.54kg/度
-          </Text>
+          <Text style={styles.carbonDisclaimer}>{t('station.carbon_disclaimer')}</Text>
         </View>
 
-        {/* 停车说明 */}
         {(station.parkingNote || station.accessNote) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>停车与进站</Text>
+            <Text style={styles.sectionTitle}>{t('station.parking_access')}</Text>
             {station.parkingNote && (
               <View style={styles.noteRow}>
-                <Text style={styles.noteLabel}>停车说明</Text>
+                <Text style={styles.noteLabel}>{t('station.parking_note')}</Text>
                 <Text style={styles.noteValue}>{station.parkingNote}</Text>
               </View>
             )}
             {station.accessNote && (
               <View style={styles.noteRow}>
-                <Text style={styles.noteLabel}>进站提示</Text>
+                <Text style={styles.noteLabel}>{t('station.access_note')}</Text>
                 <Text style={styles.noteValue}>{station.accessNote}</Text>
               </View>
             )}
           </View>
         )}
 
-        {/* 用户评价 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>用户评价</Text>
+          <Text style={styles.sectionTitle}>{t('station.reviews')}</Text>
           {station.reviews && station.reviews.length > 0 ? (
             station.reviews.map((r) => (
               <View key={r.id} style={styles.reviewRow}>
@@ -473,30 +460,29 @@ export default function StationDetailScreen() {
                     {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
                   </Text>
                   <Text style={styles.reviewDate}>
-                    {new Date(r.createdAt).toLocaleDateString('zh-CN')}
+                    {new Date(r.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-AU')}
                   </Text>
                 </View>
                 {r.body && <Text style={styles.reviewBody}>{r.body}</Text>}
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>暂无评价</Text>
+            <Text style={styles.emptyText}>{t('station.no_reviews')}</Text>
           )}
         </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* 底部按钮 */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.contributeBtn}
           onPress={() => router.push(`/contribute/${station.id}?stationName=${encodeURIComponent(station.name)}`)}
         >
-          <Text style={styles.contributeBtnText}>贡献数据</Text>
+          <Text style={styles.contributeBtnText}>{t('station.report')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.navBtn} onPress={navigateTo}>
-          <Text style={styles.navBtnText}>开始导航</Text>
+          <Text style={styles.navBtnText}>{t('station.navigate')}</Text>
         </TouchableOpacity>
       </View>
     </View>
