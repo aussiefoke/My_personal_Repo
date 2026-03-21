@@ -19,11 +19,10 @@ export async function aiRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: '参数错误' });
 
     const { message, lat = 22.5396, lng = 114.0577 } = parsed.data;
-    const latDelta = 5 / 111;
-    const lngDelta = 5 / (111 * Math.cos((lat * Math.PI) / 180));
 
+    // 不限距离，查全部站点
     const result = await db.execute<any>(sql`
-      SELECT s.name, s.address, s.operator_id,
+      SELECT s.id, s.name, s.address, s.operator_id,
              s.charger_count_dc, s.charger_count_ac,
              s.reliability_score, s.parking_note,
              p.total_flat, p.total_peak, p.total_valley, p.service_fee,
@@ -36,9 +35,7 @@ export async function aiRoutes(app: FastifyInstance) {
         ORDER BY created_at DESC
         LIMIT 1
       ) p ON true
-      WHERE s.lat BETWEEN ${lat - latDelta} AND ${lat + latDelta}
-        AND s.lng BETWEEN ${lng - lngDelta} AND ${lng + lngDelta}
-        AND s.status = 'active'
+      WHERE s.status = 'active'
       ORDER BY distance_km ASC
       LIMIT 8
     `);
@@ -68,7 +65,8 @@ ${stationContext}
 3. 回答简洁，不超过150字
 4. 用中文回答
 5. 如果用户问英文，用英文回答
-6. 不要编造数据，只使用上面提供的真实数据`;
+6. 不要编造数据，只使用上面提供的真实数据
+7. 推荐充电站时，必须使用站点的完整名称，和数据中的名称完全一致`;
 
     try {
       const response = await fetch('https://api.featherless.ai/v1/chat/completions', {
@@ -90,7 +88,26 @@ ${stationContext}
 
       if (!response.ok) throw new Error(`Featherless API error: ${response.status}`);
       const data = await response.json() as any;
-      return { reply: data.choices[0].message.content };
+      const replyText = data.choices[0].message.content;
+
+      // 从回复中匹配站点名称，返回对应站点卡片数据
+      const mentionedStations = stations
+        .filter((s: any) => replyText.includes(s.name))
+        .map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          address: s.address,
+          distanceKm: s.distance_km,
+          price: s.total_flat ?? null,
+        }));
+
+      console.log('=== AI DEBUG ===');
+      console.log('AI回复:', replyText);
+      console.log('站点名称列表:', stations.map((s: any) => s.name));
+      console.log('匹配到的站点:', mentionedStations);
+      console.log('================');
+
+      return { reply: replyText, stations: mentionedStations };
     } catch (err) {
       console.error('AI error:', err);
       return reply.code(500).send({ error: 'AI 服务暂时不可用，请稍后再试' });
@@ -169,7 +186,6 @@ ${stationContext}
 
       const result = JSON.parse(jsonMatch[0]);
 
-      // 拒绝非充电账单
       if (!result.valid) {
         return {
           kwh: 0,
@@ -178,7 +194,6 @@ ${stationContext}
         };
       }
 
-      // 硬校验：kwh必须是合理充电量
       const kwhRaw = parseFloat(result.kwh);
       if (!result.kwh || isNaN(kwhRaw) || kwhRaw < 0.1 || kwhRaw > 100) {
         return {
@@ -188,7 +203,6 @@ ${stationContext}
         };
       }
 
-      // 验证账单日期不超过7天
       if (result.date) {
         const receiptDate = new Date(result.date);
         const daysDiff = (Date.now() - receiptDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -230,7 +244,6 @@ ${stationContext}
 
     const user = request.user as { userId: string };
 
-    // 每日限领一次
     const todayResult = await db.execute<{ count: string }>(sql`
       SELECT COUNT(*) as count FROM point_transactions
       WHERE user_id = ${user.userId}

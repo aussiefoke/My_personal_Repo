@@ -3,11 +3,21 @@ import {
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useState, useRef } from 'react';
+import { router } from 'expo-router';
 import { apiClient } from '../../lib/api';
+
+interface StationCard {
+  id: string;
+  name: string;
+  address: string;
+  distanceKm: number;
+  price: number | null;
+}
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  stations?: StationCard[];
 }
 
 const SUGGESTIONS = [
@@ -45,7 +55,11 @@ export default function AIScreen() {
         lat: 22.5396,
         lng: 114.0577,
       });
-      setMessages([...newMessages, { role: 'assistant', content: res.data.reply }]);
+      setMessages([...newMessages, {
+        role: 'assistant',
+        content: res.data.reply,
+        stations: res.data.stations ?? [],
+      }]);
     } catch (e) {
       setMessages([...newMessages, {
         role: 'assistant',
@@ -69,19 +83,59 @@ export default function AIScreen() {
         contentContainerStyle={styles.messagesContent}
       >
         {messages.map((m, i) => (
-          <View key={i} style={[
-            styles.bubble,
-            m.role === 'user' ? styles.userBubble : styles.aiBubble
-          ]}>
-            {m.role === 'assistant' && (
-              <Text style={styles.aiLabel}>AI 助手</Text>
-            )}
-            <Text style={[
-              styles.bubbleText,
-              m.role === 'user' ? styles.userText : styles.aiText
+          <View key={i}>
+            <View style={[
+              styles.bubble,
+              m.role === 'user' ? styles.userBubble : styles.aiBubble
             ]}>
-              {m.content}
-            </Text>
+              {m.role === 'assistant' && (
+                <Text style={styles.aiLabel}>AI 助手</Text>
+              )}
+              <Text style={[
+                styles.bubbleText,
+                m.role === 'user' ? styles.userText : styles.aiText
+              ]}>
+                {m.content}
+              </Text>
+            </View>
+
+            {/* 推荐站点卡片 */}
+            {m.stations && m.stations.length > 0 && (
+              <View style={styles.stationCards}>
+                {m.stations.map((s) => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={styles.stationCard}
+                    onPress={() => router.push(`/station/${s.id}`)}
+                  >
+                    <View style={styles.stationCardLeft}>
+                      <Text style={styles.stationCardName} numberOfLines={1}>
+                        📍 {s.name}
+                      </Text>
+                      <Text style={styles.stationCardAddress} numberOfLines={1}>
+                        {s.address}
+                      </Text>
+                      <Text style={styles.stationCardDistance}>
+                        {s.distanceKm} km
+                      </Text>
+                    </View>
+                    <View style={styles.stationCardRight}>
+                      {s.price ? (
+                        <>
+                          <Text style={styles.stationCardPrice}>
+                            ¥{s.price.toFixed(2)}
+                          </Text>
+                          <Text style={styles.stationCardPriceUnit}>/度</Text>
+                        </>
+                      ) : (
+                        <Text style={styles.stationCardPriceUnit}>价格未知</Text>
+                      )}
+                      <Text style={styles.stationCardArrow}>›</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
         ))}
 
@@ -92,7 +146,6 @@ export default function AIScreen() {
           </View>
         )}
 
-        {/* 快捷问题 */}
         {messages.length === 1 && (
           <View style={styles.suggestions}>
             <Text style={styles.suggestionsTitle}>你可以这样问：</Text>
@@ -109,7 +162,6 @@ export default function AIScreen() {
         )}
       </ScrollView>
 
-      {/* 输入框 */}
       <View style={styles.inputBar}>
         <TextInput
           style={styles.input}
@@ -155,6 +207,23 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 15, lineHeight: 22 },
   userText: { color: '#fff' },
   aiText: { color: '#1a1a1a' },
+
+  stationCards: { marginTop: 8, gap: 8, maxWidth: '90%' },
+  stationCard: {
+    backgroundColor: '#fff', borderRadius: 12, padding: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    borderLeftWidth: 3, borderLeftColor: '#1DB954',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  stationCardLeft: { flex: 1, marginRight: 8 },
+  stationCardName: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
+  stationCardAddress: { fontSize: 12, color: '#888', marginTop: 2 },
+  stationCardDistance: { fontSize: 12, color: '#1DB954', marginTop: 2 },
+  stationCardRight: { alignItems: 'flex-end' },
+  stationCardPrice: { fontSize: 18, fontWeight: '800', color: '#1DB954' },
+  stationCardPriceUnit: { fontSize: 11, color: '#999' },
+  stationCardArrow: { fontSize: 18, color: '#ccc', marginTop: 4 },
 
   suggestions: { marginTop: 8, gap: 8 },
   suggestionsTitle: { fontSize: 13, color: '#999', marginBottom: 4 },
