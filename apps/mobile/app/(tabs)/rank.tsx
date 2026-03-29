@@ -1,11 +1,15 @@
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, ActivityIndicator, RefreshControl
+  ScrollView, ActivityIndicator, RefreshControl, Linking, Alert
 } from 'react-native';
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 import { rankingApi } from '../../lib/api';
 import { useLanguageStore } from '../../store/languageStore';
+
+const DEFAULT_LAT = 22.5396;
+const DEFAULT_LNG = 114.0577;
 
 interface Station {
   id: string;
@@ -33,6 +37,9 @@ export default function RankScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState('best');
+  const [userLat, setUserLat] = useState(DEFAULT_LAT);
+  const [userLng, setUserLng] = useState(DEFAULT_LNG);
+  const [locationLabel, setLocationLabel] = useState('');
 
   const SORT_OPTIONS = [
     { key: 'best',      label: t('rank.sort_best') },
@@ -42,12 +49,51 @@ export default function RankScreen() {
   ];
 
   useEffect(() => {
-    loadRanking(sortBy);
+    initLocation();
+  }, []);
+
+  useEffect(() => {
+    if (!loading || refreshing) {
+      loadRanking(sortBy, userLat, userLng);
+    }
   }, [sortBy]);
 
-  const loadRanking = async (sort: string) => {
+  const initLocation = async () => {
     try {
-      const res = await rankingApi.nearby(22.5396, 114.0577, sort, 30);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          t('map.location_denied_title'),
+          t('map.location_denied_desc'),
+          [
+            { text: t('map.go_settings'), onPress: () => Linking.openSettings() },
+            { text: t('map.use_default'), style: 'cancel' },
+          ]
+        );
+        setLocationLabel(t('map.default_location'));
+        loadRanking(sortBy, DEFAULT_LAT, DEFAULT_LNG);
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = location.coords;
+      setUserLat(latitude);
+      setUserLng(longitude);
+      setLocationLabel(t('map.current_location'));
+      loadRanking(sortBy, latitude, longitude);
+    } catch (e) {
+      console.error('定位失败:', e);
+      setLocationLabel(t('map.default_location'));
+      loadRanking(sortBy, DEFAULT_LAT, DEFAULT_LNG);
+    }
+  };
+
+  const loadRanking = async (sort: string, lat: number, lng: number) => {
+    try {
+      const res = await rankingApi.nearby(lat, lng, sort, 30);
       setStations(res.data.stations ?? []);
     } catch (e) {
       console.error(e);
@@ -59,7 +105,7 @@ export default function RankScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadRanking(sortBy);
+    loadRanking(sortBy, userLat, userLng);
   };
 
   const getCurrentPrice = (station: Station) => {
@@ -93,6 +139,14 @@ export default function RankScreen() {
 
   return (
     <View style={styles.container}>
+
+      {/* 位置状态栏 */}
+      <View style={styles.locationBar}>
+        <Text style={styles.locationText}>{locationLabel}</Text>
+        <TouchableOpacity onPress={initLocation}>
+          <Text style={styles.relocateText}>{t('map.relocate')}</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.sortBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortScroll}>
@@ -195,6 +249,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, color: '#666', fontSize: 14 },
+
+  locationBar: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8,
+    borderBottomWidth: 0.5, borderBottomColor: '#eee',
+  },
+  locationText: { fontSize: 13, color: '#333' },
+  relocateText: { fontSize: 13, color: '#1DB954', fontWeight: '600' },
 
   sortBar: {
     backgroundColor: '#fff',

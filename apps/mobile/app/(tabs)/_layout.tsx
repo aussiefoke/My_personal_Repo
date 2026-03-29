@@ -23,15 +23,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="calculator"
-        options={{
-          title: '费用估算',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="calculator" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
           title: '我的',
@@ -41,14 +32,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-  name="ai"
-  options={{
-    title: 'AI 助手',
-    tabBarIcon: ({ color }) => (
-      <Ionicons name="chatbubble-ellipses" size={24} color={color} />
-    ),
-  }}
-/>
+        name="ai"
+        options={{
+          title: 'AI 助手',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="chatbubble-ellipses" size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="calculator"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }
