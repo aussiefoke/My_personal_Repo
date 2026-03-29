@@ -4,15 +4,10 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useState } from 'react';
+import * as Location from 'expo-location';
 import { apiClient } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
-
-const CONTRIBUTION_TYPES = [
-  { key: 'price_update', label: '更新价格', points: 15, desc: '报告当前充电价格' },
-  { key: 'fault',        label: '故障上报', points: 12, desc: '充电桩故障或损坏' },
-  { key: 'queue',        label: '排队报告', points: 8,  desc: '当前排队等候情况' },
-  { key: 'access_tip',   label: '进站提示', points: 10, desc: '进站路线或注意事项' },
-];
+import { useLanguageStore } from '../../store/languageStore';
 
 export default function ContributeScreen() {
   const { stationId, stationName } = useLocalSearchParams<{
@@ -20,6 +15,14 @@ export default function ContributeScreen() {
     stationName: string;
   }>();
   const { isLoggedIn } = useAuthStore();
+  const { t } = useLanguageStore();
+
+  const CONTRIBUTION_TYPES = [
+    { key: 'price_update', label: t('contribute.price_update'), points: 15, desc: t('contribute.price_update_desc') },
+    { key: 'fault',        label: t('contribute.fault_report'), points: 12, desc: t('contribute.fault_report_desc') },
+    { key: 'queue',        label: t('contribute.queue_report'), points: 8,  desc: t('contribute.queue_report_desc') },
+    { key: 'access_tip',   label: t('contribute.checkin'),      points: 10, desc: t('contribute.checkin_desc') },
+  ];
 
   const [selectedType, setSelectedType] = useState('price_update');
   const [price, setPrice] = useState('');
@@ -30,20 +33,31 @@ export default function ContributeScreen() {
 
   const handleSubmit = async () => {
     if (!isLoggedIn()) {
-      Alert.alert('请先登录', '登录后才能贡献数据', [
-        { text: '去登录', onPress: () => router.push('/auth/login') },
-        { text: '取消', style: 'cancel' },
+      Alert.alert(t('station.login_required'), t('station.login_to_scan'), [
+        { text: t('station.go_login'), onPress: () => router.push('/auth/login') },
+        { text: t('common.cancel'), style: 'cancel' },
       ]);
       return;
     }
 
     if (selectedType === 'price_update' && !price) {
-      Alert.alert('请输入价格', '更新价格需要填写当前电价');
+      Alert.alert(t('contribute.price_required'), t('contribute.price_required_desc'));
       return;
     }
 
     setSubmitting(true);
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('station.camera_permission'), t('contribute.location_required'));
+        setSubmitting(false);
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
       const payload: any = { note };
       if (selectedType === 'price_update' && price) {
         payload.price = parseFloat(price);
@@ -52,17 +66,19 @@ export default function ContributeScreen() {
       await apiClient.post('/contributions', {
         stationId,
         type: selectedType,
-        payload: JSON.stringify(payload),
+        payload,
+        userLat: location.coords.latitude,
+        userLng: location.coords.longitude,
       });
 
       Alert.alert(
-        '提交成功',
-        `感谢你的贡献！已获得 +${selectedContrib?.points} 积分`,
-        [{ text: '好的', onPress: () => router.back() }]
+        t('contribute.success'),
+        `${t('contribute.success_desc')} +${selectedContrib?.points} ${t('profile.points_unit')}`,
+        [{ text: t('common.confirm'), onPress: () => router.back() }]
       );
     } catch (e: any) {
-      const msg = e?.response?.data?.error ?? '提交失败，请稍后重试';
-      Alert.alert('提交失败', msg);
+      const msg = e?.response?.data?.error ?? t('contribute.fail_desc');
+      Alert.alert(t('contribute.fail'), msg);
     } finally {
       setSubmitting(false);
     }
@@ -72,81 +88,65 @@ export default function ContributeScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
 
-        {/* 头部 */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backText}>返回</Text>
+            <Text style={styles.backText}>{t('common.back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>贡献数据</Text>
+          <Text style={styles.title}>{t('contribute.title')}</Text>
           <Text style={styles.stationName} numberOfLines={1}>
             {decodeURIComponent(stationName ?? '')}
           </Text>
         </View>
 
-        {/* 贡献类型选择 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>选择贡献类型</Text>
+          <Text style={styles.sectionTitle}>{t('contribute.select_type')}</Text>
           {CONTRIBUTION_TYPES.map((type) => (
             <TouchableOpacity
               key={type.key}
-              style={[
-                styles.typeCard,
-                selectedType === type.key && styles.typeCardActive,
-              ]}
+              style={[styles.typeCard, selectedType === type.key && styles.typeCardActive]}
               onPress={() => setSelectedType(type.key)}
             >
               <View style={styles.typeCardLeft}>
-                <Text style={[
-                  styles.typeCardLabel,
-                  selectedType === type.key && styles.typeCardLabelActive,
-                ]}>
+                <Text style={[styles.typeCardLabel, selectedType === type.key && styles.typeCardLabelActive]}>
                   {type.label}
                 </Text>
                 <Text style={styles.typeCardDesc}>{type.desc}</Text>
               </View>
-              <View style={[
-                styles.pointsBadge,
-                selectedType === type.key && styles.pointsBadgeActive,
-              ]}>
-                <Text style={[
-                  styles.pointsBadgeText,
-                  selectedType === type.key && styles.pointsBadgeTextActive,
-                ]}>
-                  +{type.points}分
+              <View style={[styles.pointsBadge, selectedType === type.key && styles.pointsBadgeActive]}>
+                <Text style={[styles.pointsBadgeText, selectedType === type.key && styles.pointsBadgeTextActive]}>
+                  +{type.points}{t('profile.points_unit')}
                 </Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* 价格输入（仅更新价格时显示） */}
         {selectedType === 'price_update' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>当前电价</Text>
+            <Text style={styles.sectionTitle}>{t('contribute.current_price')}</Text>
             <View style={styles.priceInputRow}>
               <Text style={styles.pricePrefix}>¥</Text>
               <TextInput
                 style={styles.priceInput}
                 value={price}
                 onChangeText={setPrice}
-                placeholder="输入当前电价，例如 0.98"
+                placeholder={t('contribute.price_placeholder')}
                 placeholderTextColor="#999"
                 keyboardType="decimal-pad"
                 maxLength={6}
               />
-              <Text style={styles.priceSuffix}>/度</Text>
+              <Text style={styles.priceSuffix}>{t('contribute.per_kwh')}</Text>
             </View>
           </View>
         )}
 
-        {/* 备注 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>备注（可选）</Text>
+          <Text style={styles.sectionTitle}>{t('contribute.note')}</Text>
           <TextInput
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
-            placeholder="补充说明，例如：快充桩3号故障，4号正常"
+            placeholder={t('contribute.note_placeholder')}
             placeholderTextColor="#999"
             multiline
             maxLength={200}
@@ -155,18 +155,16 @@ export default function ContributeScreen() {
           <Text style={styles.noteCount}>{note.length}/200</Text>
         </View>
 
-        {/* 防作弊说明 */}
         <View style={styles.ruleBox}>
-          <Text style={styles.ruleTitle}>贡献规则</Text>
-          <Text style={styles.ruleText}>· 需在充电站 300 米范围内提交</Text>
-          <Text style={styles.ruleText}>· 每站每天最多提交 3 条</Text>
-          <Text style={styles.ruleText}>· 经 2 人以上验证后积分生效</Text>
+          <Text style={styles.ruleTitle}>{t('contribute.rules_title')}</Text>
+          <Text style={styles.ruleText}>{t('contribute.rule_1')}</Text>
+          <Text style={styles.ruleText}>{t('contribute.rule_2')}</Text>
+          <Text style={styles.ruleText}>{t('contribute.rule_3')}</Text>
         </View>
 
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* 底部提交按钮 */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
@@ -176,7 +174,7 @@ export default function ContributeScreen() {
           {submitting
             ? <ActivityIndicator size="small" color="#fff" />
             : <Text style={styles.submitBtnText}>
-                提交贡献 · 获得 +{selectedContrib?.points} 积分
+                {t('contribute.submit')} · +{selectedContrib?.points} {t('profile.points_unit')}
               </Text>
           }
         </TouchableOpacity>
@@ -227,8 +225,7 @@ const styles = StyleSheet.create({
 
   noteInput: {
     borderWidth: 1.5, borderColor: '#e0e0e0', borderRadius: 12,
-    padding: 12, fontSize: 14, color: '#1a1a1a',
-    minHeight: 100,
+    padding: 12, fontSize: 14, color: '#1a1a1a', minHeight: 100,
   },
   noteCount: { fontSize: 11, color: '#ccc', textAlign: 'right', marginTop: 4 },
 

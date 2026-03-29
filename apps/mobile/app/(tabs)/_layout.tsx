@@ -1,13 +1,16 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguageStore } from '../../store/languageStore';
 
 export default function TabLayout() {
+  const { t } = useLanguageStore();
+
   return (
     <Tabs screenOptions={{ tabBarActiveTintColor: '#1DB954' }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: '附近充电',
+          title: t('tab.map'),
           tabBarIcon: ({ color }) => (
             <Ionicons name="map" size={24} color={color} />
           ),
@@ -16,7 +19,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="rank"
         options={{
-          title: '智能排名',
+          title: t('tab.rank'),
           tabBarIcon: ({ color }) => (
             <Ionicons name="trophy" size={24} color={color} />
           ),
@@ -25,7 +28,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: '我的',
+          title: t('tab.profile'),
           tabBarIcon: ({ color }) => (
             <Ionicons name="person" size={24} color={color} />
           ),
@@ -34,7 +37,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ai"
         options={{
-          title: 'AI 助手',
+          title: t('tab.ai'),
           tabBarIcon: ({ color }) => (
             <Ionicons name="chatbubble-ellipses" size={24} color={color} />
           ),
