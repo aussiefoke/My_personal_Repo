@@ -114,13 +114,14 @@ export async function getRankedStations(
       0.05;
 
     const recommendLabel = (() => {
-      if (priceScore > 0.8 && availScore > 0.6) return '价格最优，当前有空位';
-      if (priceScore > 0.8) return `当前时段价格最低 ¥${currentPrice?.toFixed(2)}/度`;
-      if (availScore > 0.8) return '空位充足，无需排队';
-      if (distScore > 0.7) return `距你最近 ${s.distanceKm}km`;
-      if (reliScore > 0.85) return '用户评价：设备可靠';
-      return '综合评分较高';
-    })();
+  if (priceScore > 0.8 && availScore > 0.6) return '价格最优，当前有空位';
+  if (priceScore > 0.8) return `综合价格较低 ¥${currentPrice?.toFixed(2)}/度`;
+  if (currentPrice !== null && currentPrice === minPrice) return `当前时段最低价 ¥${currentPrice.toFixed(2)}/度`;
+  if (availScore > 0.8) return '空位充足，无需排队';
+  if (distScore > 0.7) return `距你最近 ${s.distanceKm}km`;
+  if (reliScore > 0.85) return '用户评价：设备可靠';
+  return '综合评分较高';
+})();
 
     return {
       id: s.id,

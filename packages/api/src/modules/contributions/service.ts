@@ -38,16 +38,17 @@ export async function submitContribution(
   if (!station) throw new AppError(404, '充电站不存在');
 
   const dist = haversineKm(body.userLat, body.userLng, station.lat, station.lng);
-  if (dist > 0.3) {
+  if (dist > 0.3 && process.env.DEMO_MODE !== 'true') {
     throw new AppError(403, `你距该充电站 ${dist.toFixed(1)}km，需在 300m 以内才能提交报告`);
   }
 
-  const [countRow] = await db.execute<{ count: string }>(sql`
-    SELECT COUNT(*) as count FROM contributions
-    WHERE user_id = ${userId}
-      AND station_id = ${body.stationId}
-      AND created_at > NOW() - INTERVAL '24 hours'
-  `);
+ const rows = await db.execute<{ count: string }>(sql`
+  SELECT COUNT(*) as count FROM contributions
+  WHERE user_id = ${userId}
+    AND station_id = ${body.stationId}
+    AND created_at > NOW() - INTERVAL '24 hours'
+`);
+const countRow = Array.isArray(rows) ? rows[0] : (rows as any).rows?.[0];
   if (parseInt(countRow.count) >= 3) {
     throw new AppError(429, '今日对该充电站的贡献已达上限（3条/天）');
   }
