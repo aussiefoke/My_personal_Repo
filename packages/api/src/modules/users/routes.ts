@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { requireAuth } from '../../shared/middleware/auth';
 import { db, schema } from '../../shared/db/client';
 import { sendOtp, verifyOtp } from './authService';
+import { getTierByPoints } from '../../shared/utils/helpers';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/send-otp', async (request, reply) => {
@@ -38,6 +39,16 @@ export async function userRoutes(app: FastifyInstance) {
       .from(schema.users)
       .where(eq(schema.users.id, user.userId));
     if (!profile) return reply.code(404).send({ error: '用户不存在' });
+
+    // 自动修正 tier
+    const correctTier = getTierByPoints(profile.points ?? 0);
+    if (profile.tier !== correctTier) {
+      await db.execute(sql`
+        UPDATE users SET tier = ${correctTier} WHERE id = ${user.userId}
+      `);
+      profile.tier = correctTier;
+    }
+
     return { user: profile };
   });
 

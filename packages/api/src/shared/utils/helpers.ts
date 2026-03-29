@@ -30,3 +30,10 @@ export function getCurrentPricePeriod(): 'peak' | 'flat' | 'valley' {
   if (hour >= 17 && hour < 22) return 'peak';
   return 'valley';
 }
+
+export function getTierByPoints(points: number): string {
+  if (points >= 2000) return 'guardian';
+  if (points >= 500) return 'expert';
+  if (points >= 100) return 'regular';
+  return 'newbie';
+}

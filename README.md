@@ -21,11 +21,14 @@ ChargeSmart aggregates all charging stations onto a single map, uses a smart alg
 - All charging stations from multiple operators on one Mapbox map
 - Color-coded price pins (green = cheap, orange = medium, red = expensive)
 - One-tap navigation to any station via Amap or Baidu Maps
+- Real-time GPS positioning with fallback to default location
 
 ### Smart Ranking Algorithm
 ```
 Score = Price×0.35 + Availability×0.25 + Distance×0.20 + Reliability×0.15 + Speed×0.05
 ```
+- GPS-aware ranking — results sorted by distance from user's real location
+- Four sort modes: Best Overall, Lowest Price, Nearest, Most Available
 
 ### AI Charging Assistant
 - Natural language Q&A powered by Qwen2.5-7B
@@ -45,6 +48,11 @@ Score = Price×0.35 + Availability×0.25 + Distance×0.20 + Reliability×0.15 + 
 - Every charging session tracked as CO2 reduced, trees saved, and km of emissions avoided
 - Gamified points system with 4 user tiers
 
+### Security
+- HMAC-SHA256 request signing on all API calls
+- Rate limiting: 100 requests/min general, 10 requests/min for AI endpoints
+- JWT authentication with 30-day expiry
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -55,7 +63,7 @@ Score = Price×0.35 + Availability×0.25 + Distance×0.20 + Reliability×0.15 + 
 | Database | PostgreSQL + Drizzle ORM (Railway) |
 | AI Chat | Featherless API — Qwen2.5-7B-Instruct |
 | AI Vision | Featherless API — Qwen3-VL-30B |
-| Auth | Phone OTP |
+| Auth | Phone OTP + JWT |
 | Deployment | Railway |
 | Package Manager | pnpm workspaces (Monorepo) |
 
@@ -115,6 +123,8 @@ npx expo start
 ```
 DATABASE_URL=your_postgresql_url
 FEATHERLESS_API_KEY=your_featherless_key
+JWT_SECRET=your_jwt_secret
+DEMO_MODE=true
 ```
 
 ## Database Schema
