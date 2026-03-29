@@ -37,8 +37,8 @@ export default function RankScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState('best');
-  const [userLat, setUserLat] = useState(DEFAULT_LAT);
-  const [userLng, setUserLng] = useState(DEFAULT_LNG);
+  const [location, setLocation] = useState({ lat: DEFAULT_LAT, lng: DEFAULT_LNG });
+  const [locationReady, setLocationReady] = useState(false);
   const [locationLabel, setLocationLabel] = useState('');
 
   const SORT_OPTIONS = [
@@ -53,10 +53,10 @@ export default function RankScreen() {
   }, []);
 
   useEffect(() => {
-    if (!loading || refreshing) {
-      loadRanking(sortBy, userLat, userLng);
+    if (locationReady) {
+      loadRanking(sortBy, location.lat, location.lng);
     }
-  }, [sortBy]);
+  }, [sortBy, locationReady]);
 
   const initLocation = async () => {
     try {
@@ -71,28 +71,30 @@ export default function RankScreen() {
           ]
         );
         setLocationLabel(t('map.default_location'));
-        loadRanking(sortBy, DEFAULT_LAT, DEFAULT_LNG);
+        setLocation({ lat: DEFAULT_LAT, lng: DEFAULT_LNG });
+        setLocationReady(true);
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({
+      const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
 
-      const { latitude, longitude } = location.coords;
-      setUserLat(latitude);
-      setUserLng(longitude);
+      const { latitude, longitude } = loc.coords;
+      setLocation({ lat: latitude, lng: longitude });
       setLocationLabel(t('map.current_location'));
-      loadRanking(sortBy, latitude, longitude);
+      setLocationReady(true);
     } catch (e) {
       console.error('定位失败:', e);
       setLocationLabel(t('map.default_location'));
-      loadRanking(sortBy, DEFAULT_LAT, DEFAULT_LNG);
+      setLocation({ lat: DEFAULT_LAT, lng: DEFAULT_LNG });
+      setLocationReady(true);
     }
   };
 
   const loadRanking = async (sort: string, lat: number, lng: number) => {
     try {
+      setLoading(true);
       const res = await rankingApi.nearby(lat, lng, sort, 30);
       setStations(res.data.stations ?? []);
     } catch (e) {
@@ -105,7 +107,7 @@ export default function RankScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadRanking(sortBy, userLat, userLng);
+    loadRanking(sortBy, location.lat, location.lng);
   };
 
   const getCurrentPrice = (station: Station) => {
@@ -140,7 +142,6 @@ export default function RankScreen() {
   return (
     <View style={styles.container}>
 
-      {/* 位置状态栏 */}
       <View style={styles.locationBar}>
         <Text style={styles.locationText}>{locationLabel}</Text>
         <TouchableOpacity onPress={initLocation}>
@@ -154,10 +155,7 @@ export default function RankScreen() {
             <TouchableOpacity
               key={opt.key}
               style={[styles.sortBtn, sortBy === opt.key && styles.sortBtnActive]}
-              onPress={() => {
-                setSortBy(opt.key);
-                setLoading(true);
-              }}
+              onPress={() => setSortBy(opt.key)}
             >
               <Text style={[styles.sortBtnText, sortBy === opt.key && styles.sortBtnTextActive]}>
                 {opt.label}
